@@ -261,6 +261,7 @@ packages_list<-c("tidyverse"
                  ,"MASS"
                  ,"RColorBrewer"
                  ,"kableExtra"
+                 ,"gtools"
                  # ,"ggfortify"
                  # ,"brms"
                  # ,"rnoaa"
@@ -433,7 +434,8 @@ vars<-c("lag1_logJCK") #what regression variables will we use?
 dat<-data.frame(dat)%>%dplyr::select(Year,Chinook,all_of(vars))
 #for gam fits and r-arima fits
 xreg=as.matrix(dat%>%dplyr::select(lag1_logJCK))
-k = 5 #this is the model-averaging weighting exponent--default is 1, larger numbers will tend to more heavily weight "best" models over lower ranked models
+k = 1 #this is the model-averaging weighting exponent--default is 1, larger numbers will tend to more heavily weight "best" models over lower ranked models
+stack_metric = "MSA" #this is the performance measure that will be optimized to find the best stack weights
 ```
 
 # Fit Forecast Models
@@ -586,7 +588,7 @@ dat3<-dat2%>%
   group_by(Model)%>%
   summarise(RMSE = sqrt(mean(error^2)),
             MAPE = mean(abs(error/Chinook.y))*100,
-            MSA = 100*exp(median(abs(log(Chinook.y/Chinook.x)))-1)
+            MSA = 100*(exp(mean(abs(log(Chinook.y/Chinook.x))))-1)
               )%>%
   arrange(MSA)%>%
   #could really benefit from adding a function to calculate 'stacking weights'
@@ -595,10 +597,75 @@ dat3<-dat2%>%
          MAPE_weight =(1/MAPE)^k/sum((1/MAPE)^k)
 )
 
+```
+
+# Stacking Weights
+```{r stack_weights, message = FALSE, warning = FALSE,results = "show"}
+find_stack_weights<-function(tau,metric,n,initial_weights,preds,obs){
+  tweights<-initial_weights
+  preds<-as.matrix(preds)
+  obs<-obs
+  tau=tau
+  skill_list<-c(NULL)
+  metric=metric
+  for(i in 1:n){
+    pred_trs_ensemble<- preds %*% as.vector(tweights)
+    Error <- pred_trs_ensemble - obs
+    SE <- Error^2
+    PE <- Error/obs
+    APE <- abs(PE)
+    LAR <- log(obs/pred_trs_ensemble)
+  
+    RMSE <- apply(SE,2,function(x){sqrt(mean(x))})
+    MPE <- apply(PE,2,function(x){mean(x)})
+    MAPE <- apply(APE,2,function(x){mean(x)})
+    MSA <- apply(LAR,2,function(x){100*(exp(mean(abs(x)))-1)})
+    
+    if(i==1){
+      skill=get(metric)
+      weights=tweights
+    }
+    if(get(metric)<skill){
+      skill=get(metric)
+      weights=tweights
+    }
+    skill_list<-c(skill_list,min(get(metric),skill))
+    keep<-rbinom(1,prob=skill/get(metric),1)
+    if(keep==1){tweights=tweights }else(tweights=weights)
+    tweights = rdirichlet(n=1,alpha = tweights*tau+0.001)
+  }
+  results<-list(weights,skill,skill_list)
+  return(results)
+}
+
+modelcnt<-length(unique(dat2$Model))
+stackdat<-dat2%>%
+  filter(!is.na(Chinook))%>%
+  pivot_wider(names_from = Model, values_from = Chinook,id_cols = Year)%>%
+  left_join(dat%>%dplyr::select(Year,Chinook))
+
+
+stack_weights<-find_stack_weights(tau=1,
+                   n=10000,
+                   metric=stack_metric,
+                   initial_weights=rep(1/modelcnt,modelcnt),
+                   preds=stackdat%>%
+                     filter(!is.na(Chinook))%>%
+                     dplyr::select(!Chinook & !Year)%>%
+                     as.matrix(),
+                   obs=stackdat%>%
+                     filter(!is.na(Chinook))%>%
+                     dplyr::select(Chinook & !Year)%>%
+                     as.matrix()
+                   )
+stacking_weights<-data.frame("Stacking_weight" = as.vector(round(unlist(stack_weights[[1]]),4)))
+stacking_weights$Model<-colnames(stackdat)[!colnames(stackdat)%in%c("Year","Chinook")]
+dat3<-dat3%>%
+  left_join(stacking_weights)
+#print results
 dat3%>%
   kbl(caption = "Table 2. One Year Ahead Forecast Performance & model weights",digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
-
 ```
 
 # Ensemble Forecasts
@@ -611,15 +678,17 @@ ensembles<-dat2%>%
   left_join(dat3)%>%
   mutate(MSA_weighted = Chinook * MSA_weight,
          RMSE_weighted = Chinook * RMSE_weight,
-         MAPE_weighted = Chinook * MAPE_weight
+         MAPE_weighted = Chinook * MAPE_weight,
+         Stack_weighted = Chinook * Stacking_weight,
          )%>%
   group_by(Year)%>%
   summarise(MSA_weighted = sum(MSA_weighted),
             RMSE_weighted = sum(RMSE_weighted),
             MAPE_weighted = sum(MAPE_weighted),
+            Stack_weighted = sum(Stack_weighted),
             )%>%
   pivot_longer(names_to = "Model",
-               cols=c("MSA_weighted","RMSE_weighted","MAPE_weighted"),
+               cols=c("MSA_weighted","RMSE_weighted","MAPE_weighted","Stack_weighted"),
                values_to = "Chinook")
 
 ensembles%>%
@@ -639,7 +708,7 @@ dat4<-ensembles%>%
   group_by(Model)%>%
   summarise(RMSE = sqrt(mean(error^2)),
             MAPE = mean(abs(error/Chinook.y))*100,
-            MSA = 100*exp(median(abs(log(Chinook.y/Chinook.x)))-1)
+            MSA = 100*(exp(mean(abs(log(Chinook.y/Chinook.x))))-1)
   )%>%
   arrange(MSA)#%>%
   # mutate(
@@ -658,9 +727,8 @@ ggplot(data=ensembles,aes(x=Year,y=Chinook,color=Model))+
   labs(title="One-Year-Ahead Forecast Performance")+
   geom_line(size=1)+
   scale_color_brewer(palette="Spectral")+
-  geom_point(data=dat%>%mutate(Model="Observed"),mapping=aes(x=Year,y=Chinook),size=2)+
+  geom_point(data=dat%>%mutate(Model="Observed"),mapping=aes(x=Year,y=Chinook),size=2,color="black")+
   theme_bw()
 ```
-
-
-
+# Performance Note
+The performance of the ensembles should be better than the individual members. The stacking weighted ensemble in particular, is guaranteed to be at least as good as the best individual member. However, looking at their performance of the entire left out year-set, their performance is imperfectly estimated because it uses the final weights, whereas the actual weights used to make one-ahead foreacsts in each year would have been different than the final weights.
