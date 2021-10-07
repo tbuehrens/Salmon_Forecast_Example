@@ -627,17 +627,16 @@ dat3<-dat2%>%
             MAPE = mean(abs(error/Chinook.y))*100,
             MSA = 100*(exp(mean(abs(log(Chinook.y/Chinook.x))))-1)
               )%>%
-  arrange(MSA)%>%
-  #could really benefit from adding a function to calculate 'stacking weights'
-  mutate(MSA_weight=(1/MSA)^k/sum((1/MSA)^k), 
-         RMSE_weight =(1/RMSE)^k/sum((1/RMSE)^k),
-         MAPE_weight =(1/MAPE)^k/sum((1/MAPE)^k)
-)
+  arrange(MSA)
 
+dat3%>%
+  kbl(caption = "Table 2. Final Year One Year Ahead Forecast Performance",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
 ```
 
 
-# New weights and Ensembles
+# Ensembles & Ensemble Performance
+Calculate leave-forward-out performance year by year in order to develop weighted ensembles (with recalculated weights each year). Then evaluate performance of these one-year-ahead ensembles.
 ````{r develop and evaluate ensembles, message = FALSE, warning = FALSE,results = "show"}
 yrrange<-dat2%>%
   filter(!is.na(Chinook))%>%
@@ -659,7 +658,6 @@ for(i in 1: length(yrrange[1]:yrrange[2])){
             MSA = 100*(exp(mean(abs(log(Chinook.y/Chinook.x))))-1)
               )%>%
   arrange(MSA)%>%
-  #could really benefit from adding a function to calculate 'stacking weights'
   mutate(MSA_weight=(1/MSA)^k/sum((1/MSA)^k), 
          RMSE_weight =(1/RMSE)^k/sum((1/RMSE)^k),
          MAPE_weight =(1/MAPE)^k/sum((1/MAPE)^k)
@@ -690,6 +688,8 @@ for(i in 1: length(yrrange[1]:yrrange[2])){
   tdat<-tdat%>%
     left_join(stacking_weights)
   
+  
+  
   tdat2<-dat2%>%
     filter(Year == max(years))%>%
     left_join(tdat)%>%
@@ -712,9 +712,19 @@ for(i in 1: length(yrrange[1]:yrrange[2])){
 
 }
 
+#=================================
+#Table of final year model weights
+#=================================
+tdat%>%
+  kbl(caption = "Table 3. Final Year One Year Ahead Model Weights",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+#=======================================
+#Table of final year ensemable forecasts
+#=======================================
 ensembles%>%
   filter(Year==max(Year))%>%
-  kbl(caption = "Table 3. Ensemble forecasts for final year of data.",digits =0)%>%
+  kbl(caption = "Table 4. Ensemble forecasts for final year of data.",digits =0)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
 #=============================
@@ -734,7 +744,7 @@ dat4<-ensembles%>%
   arrange(MSA)
 
 dat4%>%
-  kbl(caption = "Table 4. One-year ahead performance of ensemble forecasts (using final year weights; not exact year-specific weights that would have been used if annually weighted).",digits =3)%>%
+  kbl(caption = "Table 5. One-year ahead performance of ensemble forecasts (using final year weights; not exact year-specific weights that would have been used if annually weighted).",digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
 #==============
@@ -746,7 +756,6 @@ ggplot(data=ensembles,aes(x=Year,y=Chinook,color=Model))+
   scale_color_brewer(palette="Spectral")+
   geom_point(data=dat%>%mutate(Model="Observed"),mapping=aes(x=Year,y=Chinook),size=2,color="black")+
   theme_bw()
-
 
 ```
 
