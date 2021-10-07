@@ -644,7 +644,7 @@ yrrange<-dat2%>%
   unlist()
 
 ensembles<-NULL
-for(i in 1: length(yrrange[1]:yrrange[2])){
+for(i in 2: length(yrrange[1]:yrrange[2])){
   years<-c(yrrange[1]:(yrrange[1]+i-1))
   tdat<-dat2%>%
   filter(Year %in% years)%>%
@@ -664,6 +664,7 @@ for(i in 1: length(yrrange[1]:yrrange[2])){
   )
 
   modelcnt<-length(unique(dat2$Model))
+  stackyears<-years[years!=max(years)]
   stackdat<-dat2%>%
     filter(Year %in% years)%>%
     filter(!is.na(Chinook))%>%
@@ -732,6 +733,7 @@ ensembles%>%
 #calc performance of ensembles
 #=============================
 dat4<-bind_rows(dat2,ensembles)%>%
+  filter(Year>min(yrrange))%>%
   left_join(dat,by="Year")%>%
   dplyr::select(Year,Model,Chinook.x,Chinook.y)%>%
   mutate(error=Chinook.y-Chinook.x)%>%
@@ -745,7 +747,7 @@ dat4<-bind_rows(dat2,ensembles)%>%
   arrange(MSA)
 
 dat4%>%
-  kbl(caption = "Table 5. One-year ahead performance of model & model ensemble forecasts (using final year weights; not exact year-specific weights that would have been used if annually weighted).",digits =3)%>%
+  kbl(caption = "Table 5. One-year ahead performance of model & model ensemble forecasts. Ensemble weights recalculated annually using weights based on one-head performance up to to and including the year prior to the forecast year. Year one of one-year ahead fits not included since an ensemble cannot be computed for this year.",digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
 #==============
