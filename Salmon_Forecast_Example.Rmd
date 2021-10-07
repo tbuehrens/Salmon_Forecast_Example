@@ -607,7 +607,7 @@ dat2%>%filter(Year==max(Year))%>%
 #Plot of final year forecast
 #===========================
 ggplot(data=dat2,aes(x=Year,y=Chinook,color=Model))+
-  labs(title="One-Year-Ahead Forecast Performance")+
+  labs(title="One-Year-Ahead Forecasts")+
   geom_line(size=1)+
   scale_color_brewer(palette="Spectral")+
   geom_point(data=dat%>%mutate(Model="Observed"),mapping=aes(x=Year,y=Chinook),size=2,color="black")+
@@ -630,7 +630,7 @@ dat3<-dat2%>%
   arrange(MSA)
 
 dat3%>%
-  kbl(caption = "Table 2. Final Year One Year Ahead Forecast Performance",digits =3)%>%
+  kbl(caption = "Table 2.Forecast Performance based on full set of one-year-ahead forecasts.",digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 ```
 
@@ -716,7 +716,8 @@ for(i in 1: length(yrrange[1]:yrrange[2])){
 #Table of final year model weights
 #=================================
 tdat%>%
-  kbl(caption = "Table 3. Final Year One Year Ahead Model Weights",digits =3)%>%
+  dplyr::select(Model, RMSE_weight, MAPE_weight, MSA_weight, Stacking_weight)%>%
+  kbl(caption = "Table 3. Final Year Model Weights based on full dataset of one-year-ahead performance.",digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
 #=======================================
@@ -724,13 +725,13 @@ tdat%>%
 #=======================================
 ensembles%>%
   filter(Year==max(Year))%>%
-  kbl(caption = "Table 4. Ensemble forecasts for final year of data.",digits =0)%>%
+  kbl(caption = "Table 4. Ensemble forecasts one year ahead of final year of data.",digits =0)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
 #=============================
 #calc performance of ensembles
 #=============================
-dat4<-ensembles%>%
+dat4<-bind_rows(dat2,ensembles)%>%
   left_join(dat,by="Year")%>%
   dplyr::select(Year,Model,Chinook.x,Chinook.y)%>%
   mutate(error=Chinook.y-Chinook.x)%>%
@@ -744,14 +745,14 @@ dat4<-ensembles%>%
   arrange(MSA)
 
 dat4%>%
-  kbl(caption = "Table 5. One-year ahead performance of ensemble forecasts (using final year weights; not exact year-specific weights that would have been used if annually weighted).",digits =3)%>%
+  kbl(caption = "Table 5. One-year ahead performance of model & model ensemble forecasts (using final year weights; not exact year-specific weights that would have been used if annually weighted).",digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
 #==============
 #plot ensemble forecasts
 #==============
 ggplot(data=ensembles,aes(x=Year,y=Chinook,color=Model))+
-  labs(title="One-Year-Ahead Forecast Performance")+
+  labs(title="One-Year-Ahead Ensemble Forecasts")+
   geom_line(size=1)+
   scale_color_brewer(palette="Spectral")+
   geom_point(data=dat%>%mutate(Model="Observed"),mapping=aes(x=Year,y=Chinook),size=2,color="black")+
