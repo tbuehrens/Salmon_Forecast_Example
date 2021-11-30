@@ -335,6 +335,19 @@ Code below will download NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, an
 #=========================================================
 #get NOAA indicator data, wrangle into usable format, plot
 #=========================================================
+NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment="#")%>%
+  filter(!is.na(X2))%>%
+  dplyr::rename(year=X1,Month=X2,NPGO=X3)%>%
+  mutate(year=as.numeric(year))%>%
+  group_by(year)%>%
+  add_tally()%>%
+  filter(!Month>6)%>% #use only spring (Jan-June) NPGO
+  #filter(!n < 12)%>% #use only complete years
+  group_by(year)%>%
+  dplyr::summarise(mean_NPGO=mean(NPGO))
+#=========================================================
+#get NOAA indicator data, wrangle into usable format, plot
+#=========================================================
 # indicators<-read_csv("https://media.fisheries.noaa.gov/2021-04/Stoplight%20csv.csv?null",skip=1)%>%
 #   filter(!is.na(`Ecosystem Indicators`))%>%
 #   pivot_longer(names_to = "Year",
@@ -429,6 +442,7 @@ Code below will download NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, an
 If we loaded/downloaded covariate data (other than fish abundance) for use in forecasting, we can merge it with our fish data here
 ```{r merge_covariate_data, message = FALSE, warning = FALSE,results = "hide"}
 #dat<-dat%>%
+  #left_join(NPGO)%>%
   #left_join(indicators)%>%
   #left_join(ssta)%>%
   #mutate(
