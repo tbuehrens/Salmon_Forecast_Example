@@ -43,7 +43,7 @@ install_or_load_pack <- function(pack){
 }
 
 #fit model function for ARIMA models
-fc <- function(y, h, xreg, order){
+fc <- function(y,Year, h, xreg, order){
   if(!is.null(xreg)){
     if(ncol(xreg)>1){
       X <- xreg[1:length(y),]
@@ -60,21 +60,24 @@ fc <- function(y, h, xreg, order){
     #results<-forecast(fit, xreg=newX,h=h)$mean[[1]]
     results<-data.frame(forecast(fit, xreg=newX,h=h))%>%
       rename(Estimate = Point.Forecast, L95 = Lo.95, U95 =Hi.95)%>%
-      mutate(SE=abs(U95/1.96))%>%
+      mutate(SE=abs((U95-Estimate)/1.96))%>%
       dplyr::select(Estimate,SE,L95,U95)
   }else{
     fit <- Arima(y,order=order,method="ML")
     #results<-forecast(fit,h=h)$mean[[1]]
     results<-data.frame(forecast(fit,h=h))%>%
       rename(Estimate = Point.Forecast, L95 = Lo.95, U95 = Hi.95)%>%
-      mutate(SE=abs(U95/1.96))%>%
+      mutate(SE=abs((U95-Estimate)/1.96))%>%
       dplyr::select(Estimate,SE,L95,U95)
   }
+  results<-results%>%
+    bind_cols(data.frame(Year=Year))%>%
+    dplyr::select(Year,Estimate,SE,L95,U95)
   return(results)
 }
 
 #fc2 fit model for gam 
-fc2 <- function(y, h, xreg, order){
+fc2 <- function(y, Year, h, xreg, order){
   if(!is.null(xreg)){
     if(ncol(xreg)>1){
       X <- xreg[1:length(y),]
@@ -102,12 +105,13 @@ fc2 <- function(y, h, xreg, order){
   results<-data.frame(predict(fit, newdata = newdat,type="link",se.fit=T))%>%
     mutate(L95 = fit - 1.96 * se.fit, U95 = fit + 1.96 * se.fit)%>%
     rename(Estimate=fit,SE=se.fit)%>%
-    dplyr::select(Estimate,SE,L95,U95)
+    bind_cols(data.frame(Year=Year))%>%
+    dplyr::select(Year,Estimate,SE,L95,U95)
   return(results)
 }
 
 #fitting wrapper for brms
-fc3<-function(TY,vars,dat,formula,prior){
+fc3<-function(TY,Year,vars,dat,formula,prior){
   TY=TY
   trainingset<-list(NULL)
   validationset<-list(NULL)
@@ -134,15 +138,18 @@ fc3<-function(TY,vars,dat,formula,prior){
     preds[indexes[i]+1,] = exp(predict(mod[[i]],newdata=validationset[[i]]))
   }
   colnames(preds)<-c("Estimate","SE","L95","U95")
+  preds<-preds%>%
+    bind_cols(data.frame(Year=Year))%>%
+    dplyr::select(Year,Estimate,SE,L95,U95)
   return(preds)
 }
 
 #one step ahead cross validation
-tsCV2<-function(y,xreg,fc,min,h,order){
-  forecast<-data.frame(matrix(NA,ncol=4,nrow=1))
-  colnames(forecast)<-c("Estimate","SE","L95","U95")
+tsCV2<-function(y,Year,xreg,fc,min,h,order){
+  forecast<-data.frame(matrix(NA,ncol=5,nrow=1))
+  colnames(forecast)<-c("Year","Estimate","SE","L95","U95")
   for(i in min:length(y)){
-    forecast[i+1,] = fc(y=y[1:i],xreg=xreg,h=h,order=order)
+    forecast[i+1,] = fc(y=y[1:i],Year=Year[1:i],xreg=xreg,h=h,order=order)
   }
   results<-forecast%>%
     remove_rownames()
@@ -351,9 +358,6 @@ SAR1<-data.frame(SAR1=gam(cbind(ocean1Count,juvCount-ocean1Count)~s(Outmigration
 PIT<-PIT%>%
   bind_cols(SAR1)
 
-
-
-
 #=========================================================
 #get NPGO data
 #=========================================================
@@ -517,62 +521,70 @@ stack_metric = "MSA" #this is the performance measure that will be optimized to 
 ```
 
 # Fit Forecast Models
-Here we will fit ARIMA and GAM forecast
+Here we will fit ARIMA and GAM forecasts 
 ```{r fit_forecasts, message = FALSE, warning = FALSE,results = "hide"}
 #==========
 #ARIMA models
 #==========
-LFO1<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
-              xreg=NULL,
-              h=FY,
-              min=TY,
-              fc=fc,
-              order=c(1,0,0)
+ARIMA100<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=NULL,
+            h=FY,
+            min=TY,
+            fc=fc,
+            order=c(1,0,0)
 )
-LFO2<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
-      xreg=xreg,
-      h=FY,
-      min=TY,
-      fc=fc,
-      order=c(1,0,0)
+ARIMA100_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=xreg,
+            h=FY,
+            min=TY,
+            fc=fc,
+            order=c(1,0,0)
       )
 
-LFO3<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA111_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+            Year=dat$Year,
             xreg=xreg,
             h=FY,
             min=TY,
             fc=fc,
             order=c(1,1,1)
 )
-LFO4<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA010_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+            Year=dat$Year,
             xreg=xreg,
             h=FY,
             min=TY,
             fc=fc,
             order=c(0,1,0)
 )
-LFO5<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA010<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+            Year=dat$Year,
             xreg=NULL,
             h=FY,
             min=TY,
             fc=fc,
             order=c(0,1,0)
 )
-LFO6<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA111<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+            Year=dat$Year,
             xreg=NULL,
             h=FY,
             min=TY,
             fc=fc,
             order=c(1,1,1)
 )
-LFO7<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA101_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+            Year=dat$Year,
             xreg=xreg,
             h=FY,
             min=TY,
             fc=fc,
             order=c(1,0,1)
 )
-LFO8<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA101<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+            Year=dat$Year,
             xreg=NULL,
             h=FY,
             min=TY,
@@ -582,7 +594,8 @@ LFO8<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
 #==========
 #GAM models
 #==========
-LFO9<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+gam<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+            Year=dat$Year,
             xreg=NULL,
             h=FY,
             min=TY,
@@ -590,6 +603,7 @@ LFO9<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             order=c(NA,NA,NA)
 )
 # LFO10<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+#             Year=dat$Year,
 #             xreg=xreg,
 #             h=FY,
 #             min=TY,
@@ -599,15 +613,17 @@ LFO9<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
 #================================
 #BRMS models with Horseshoe Prior
 #================================
-# LFO11<-fc3(
-#   TY=TY
-#   ,vars=vars
-#   ,dat=dat
-#   ,formula = as.formula(paste0("log(Steelhead) ~ gp(Year) + ",paste(vars,collapse = "+")))
-#   ,prior = set_prior(horseshoe(df = 1, par_ratio = 0.5), class="b")
-# )
+LFO11<-fc3(
+  Year=dat$Year,
+  TY=TY
+  ,vars=vars
+  ,dat=dat
+  ,formula = as.formula(paste0("log(Steelhead) ~ gp(Year) + ",paste(vars,collapse = "+")))
+  ,prior = set_prior(horseshoe(df = 1, par_ratio = 0.5), class="b")
+)
 
 # LFO12<-fc3(
+#   Year=dat$Year,
 #   TY=TY
 #   ,vars=vars
 #   ,dat=dat
@@ -622,6 +638,17 @@ Here we will summarize our forecasts for the last year of our covariate data and
 #===================
 #Summarize Forecasts
 #===================
+forecasts<-list(
+  ARIMA100 = ARIMA100,
+  ARIMA100_withcov = ARIMA100_withcov,
+  ARIMA111_withcov = ARIMA111_withcov,
+  ARIMA111 = ARIMA111,
+  ARIMA010_withcov = ARIMA010_withcov,
+  ARIMA010 = ARIMA010,
+  ARIMA101_withcov = ARIMA101_withcov,
+  ARIMA101 = ARIMA101,
+  gam = gam
+)
 dat2<-bind_cols(Year=dat$Year,
     ARIMA100=exp(LFO1$Estimate),
     ARIMA100_withcov=exp(LFO2$Estimate),

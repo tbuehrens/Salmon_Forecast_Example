@@ -60,14 +60,14 @@ fc <- function(y, h, xreg, order){
     #results<-forecast(fit, xreg=newX,h=h)$mean[[1]]
     results<-data.frame(forecast(fit, xreg=newX,h=h))%>%
       rename(Estimate = Point.Forecast, L95 = Lo.95, U95 =Hi.95)%>%
-      mutate(SE=abs(U95/1.96))%>%
+      mutate(SE=abs((U95-Estimate)/1.96))%>%
       dplyr::select(Estimate,SE,L95,U95)
   }else{
     fit <- Arima(y,order=order,method="ML")
     #results<-forecast(fit,h=h)$mean[[1]]
     results<-data.frame(forecast(fit,h=h))%>%
       rename(Estimate = Point.Forecast, L95 = Lo.95, U95 = Hi.95)%>%
-      mutate(SE=abs(U95/1.96))%>%
+      mutate(SE=abs((U95-Estimate)/1.96))%>%
       dplyr::select(Estimate,SE,L95,U95)
   }
   return(results)
