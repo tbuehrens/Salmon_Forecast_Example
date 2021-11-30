@@ -135,7 +135,7 @@ fc3<-function(TY,Year,vars,dat,formula,prior){
   )
   preds<-data.frame(matrix(NA,nrow=dim(dat)[1],ncol=4))
   for(i in 1:length(indexes)){
-    preds[indexes[i]+1,] = exp(predict(mod[[i]],newdata=validationset[[i]]))
+    preds[indexes[i]+1,] = predict(mod[[i]],newdata=validationset[[i]])
   }
   colnames(preds)<-c("Estimate","SE","L95","U95")
   preds<-preds%>%
@@ -149,7 +149,7 @@ tsCV2<-function(y,Year,xreg,fc,min,h,order){
   forecast<-data.frame(matrix(NA,ncol=5,nrow=1))
   colnames(forecast)<-c("Year","Estimate","SE","L95","U95")
   for(i in min:length(y)){
-    forecast[i+1,] = fc(y=y[1:i],Year=Year[1:i],xreg=xreg,h=h,order=order)
+    forecast[i+1,] = fc(y=y[1:i],Year=Year[i+1],xreg=xreg,h=h,order=order)
   }
   results<-forecast%>%
     remove_rownames()
@@ -310,7 +310,7 @@ packages_list<-c("tidyverse"
                  ,"kableExtra"
                  ,"gtools"
                  # ,"ggfortify"
-                 # ,"brms"
+                 ,"brms"
                  # ,"rnoaa"
                  # ,"ncdf4"
                  # ,"ncdf4.helpers"
@@ -613,14 +613,14 @@ gam<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
 #================================
 #BRMS models with Horseshoe Prior
 #================================
-LFO11<-fc3(
-  Year=dat$Year,
-  TY=TY
-  ,vars=vars
-  ,dat=dat
-  ,formula = as.formula(paste0("log(Steelhead) ~ gp(Year) + ",paste(vars,collapse = "+")))
-  ,prior = set_prior(horseshoe(df = 1, par_ratio = 0.5), class="b")
-)
+# gp_horseshoe<-fc3(
+#   Year=dat$Year,
+#   TY=TY
+#   ,vars=vars
+#   ,dat=dat
+#   ,formula = as.formula(paste0("log(Steelhead) ~ gp(Year) + ",paste(vars,collapse = "+")))
+#   ,prior = set_prior(horseshoe(df = 1, par_ratio = 0.5), class="b")
+# )
 
 # LFO12<-fc3(
 #   Year=dat$Year,
@@ -639,37 +639,34 @@ Here we will summarize our forecasts for the last year of our covariate data and
 #Summarize Forecasts
 #===================
 forecasts<-list(
-  ARIMA100 = ARIMA100,
-  ARIMA100_withcov = ARIMA100_withcov,
-  ARIMA111_withcov = ARIMA111_withcov,
-  ARIMA111 = ARIMA111,
-  ARIMA010_withcov = ARIMA010_withcov,
-  ARIMA010 = ARIMA010,
-  ARIMA101_withcov = ARIMA101_withcov,
-  ARIMA101 = ARIMA101,
-  gam = gam
-)
-dat2<-bind_cols(Year=dat$Year,
-    ARIMA100=exp(LFO1$Estimate),
-    ARIMA100_withcov=exp(LFO2$Estimate),
-    ARIMA111_withcov=exp(LFO3$Estimate),
-    ARIMA111=exp(LFO6$Estimate),
-    ARIMA010_withcov=exp(LFO4$Estimate),
-    ARIMA010=exp(LFO5$Estimate),
-    ARIMA101_withcov=exp(LFO7$Estimate),
-    ARIMA101=exp(LFO8$Estimate),
-    gam=exp(LFO9$Estimate),
-    #gam_withcov=exp(LFO10$Estimate),
-    #gp_horseshoe = LFO11$Estimate,
-    #ARIMA101_horseshoe = LFO12$Estimate
-            )%>%
-    pivot_longer(names_to = "Model",
-               cols=c(starts_with("ARIMA"),starts_with("gam"),starts_with("gp")),
-               values_to = "Steelhead")
+  ARIMA100 = ARIMA100
+  ,ARIMA100_withcov = ARIMA100_withcov
+  ,ARIMA111_withcov = ARIMA111_withcov
+  ,ARIMA111 = ARIMA111
+  ,ARIMA010_withcov = ARIMA010_withcov
+  ,ARIMA010 = ARIMA010
+  ,ARIMA101_withcov = ARIMA101_withcov
+  ,ARIMA101 = ARIMA101
+  ,gam = gam
+  #,gp_horseshoe = LFO11
+)%>%
+  map_dfr(~ .x %>% as_tibble(), .id = "Model")
 
-dat2%>%filter(Year==max(Year))%>%
+
+dat2<-forecasts%>%
+  mutate(Steelhead=exp(Estimate))%>%
+  dplyr::select(Year,Model,Steelhead)%>%
+  filter(!is.na(Steelhead))%>%
+  ungroup()
+
+forecasts%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm = T))%>%
+  dplyr::select(!SE)%>%
+  mutate(Estimate=exp(Estimate),U95=exp(U95),L95=exp(L95))%>%
   kbl(caption = "Table 1. Forecasts for final year of data.",digits =0)%>%
   kable_classic(full_width = F, html_font = "Cambria")
+
 
 #===========================
 #Plot of final year forecast
@@ -678,7 +675,7 @@ ggplot(data=dat2,aes(x=Year,y=Steelhead,color=Model))+
   labs(title="One-Year-Ahead Forecasts")+
   geom_line(size=1)+
   scale_color_brewer(palette="Spectral")+
-  geom_point(data=dat%>%mutate(Model="Observed"),mapping=aes(x=Year,y=Steelhead),size=2,color="black")+
+  geom_point(data=dat,mapping=aes(x=Year,y=Steelhead),size=2,color="black")+
   theme_bw()
 ```
 
@@ -756,16 +753,21 @@ for(i in 2: length(yrrange[1]:yrrange[2])){
   stacking_weights$Model<-colnames(stackdat)[!colnames(stackdat)%in%c("Year","Steelhead")]
   tdat<-tdat%>%
     left_join(stacking_weights)
-  
-  tdat2<-dat2%>%
+
+  tdat2<-forecasts%>%
     filter(Year == max(years))%>%
+    dplyr::select(!SE)%>%
+    mutate(Estimate=exp(Estimate),L95=exp(L95),U95=exp(U95))%>%
+    pivot_longer(names_to = "Parameter",
+                 cols=c("Estimate","L95","U95"),
+                 values_to = "value")%>%
     left_join(tdat)%>%
-    mutate(MSA_weighted = Steelhead * MSA_weight,
-           RMSE_weighted = Steelhead * RMSE_weight,
-           MAPE_weighted = Steelhead * MAPE_weight,
-           Stack_weighted = Steelhead * Stacking_weight,
+    mutate(MSA_weighted = value * MSA_weight,
+           RMSE_weighted = value * RMSE_weight,
+           MAPE_weighted = value * MAPE_weight,
+           Stack_weighted = value * Stacking_weight,
            )%>%
-    group_by(Year)%>%
+    group_by(Year,Parameter)%>%
     summarise(MSA_weighted = sum(MSA_weighted),
               RMSE_weighted = sum(RMSE_weighted),
               MAPE_weighted = sum(MAPE_weighted),
@@ -773,7 +775,8 @@ for(i in 2: length(yrrange[1]:yrrange[2])){
               )%>%
     pivot_longer(names_to = "Model",
                  cols=c("MSA_weighted","RMSE_weighted","MAPE_weighted","Stack_weighted"),
-                 values_to = "Steelhead")
+                 values_to = "value")%>%
+    pivot_wider(id_cols = c("Year","Model"),names_from=Parameter,values_from=value)
   
   ensembles<-bind_rows(ensembles,tdat2)
 
@@ -791,24 +794,25 @@ tdat%>%
 #Table of final year ensemable forecasts
 #=======================================
 ensembles%>%
-  filter(Year==max(Year))%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm=T))%>%
   kbl(caption = "Table 4. Ensemble forecasts one year ahead of final year of data.",digits =0)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
 #=============================
 #calc performance of ensembles
 #=============================
-dat4<-bind_rows(dat2,ensembles)%>%
+dat4<-bind_rows(forecasts%>%mutate(Estimate=exp(Estimate)),ensembles)%>%
   filter(Year>min(yrrange))%>%
   left_join(dat,by="Year")%>%
-  dplyr::select(Year,Model,Steelhead.x,Steelhead.y)%>%
-  mutate(error=Steelhead.y-Steelhead.x)%>%
+  dplyr::select(Year,Model,Estimate,Steelhead)%>%
+  mutate(error=Steelhead-Estimate)%>%
   filter(!is.na(error))%>%
   #dplyr::select(Year,Model,error)%>%
   group_by(Model)%>%
   summarise(RMSE = sqrt(mean(error^2)),
-            MAPE = mean(abs(error/Steelhead.y))*100,
-            MSA = 100*(exp(mean(abs(log(Steelhead.y/Steelhead.x))))-1)
+            MAPE = mean(abs(error/Steelhead))*100,
+            MSA = 100*(exp(mean(abs(log(Steelhead/Estimate))))-1)
   )%>%
   arrange(MSA)
 
@@ -819,12 +823,11 @@ dat4%>%
 #==============
 #plot ensemble forecasts
 #==============
-ggplot(data=ensembles,aes(x=Year,y=Steelhead,color=Model))+
+ggplot(data=ensembles,aes(x=Year,y=Estimate,color=Model))+
   labs(title="One-Year-Ahead Ensemble Forecasts")+
   geom_line(size=1)+
   scale_color_brewer(palette="Spectral")+
-  geom_point(data=dat%>%mutate(Model="Observed"),mapping=aes(x=Year,y=Steelhead),size=2,color="black")+
+  geom_point(data=dat,mapping=aes(x=Year,y=Steelhead),size=2,color="black")+
   theme_bw()
-
 ```
 
