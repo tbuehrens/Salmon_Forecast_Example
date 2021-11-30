@@ -56,16 +56,19 @@ fc <- function(y, h, xreg, order){
       }else(newX <- as.matrix(xreg[length(y)+(1:h),]))
     }else(newX<-xreg[length(y)+(1:h)])
     fit <-Arima(y,order=order, xreg=X,method="ML")
+    
     #results<-forecast(fit, xreg=newX,h=h)$mean[[1]]
     results<-data.frame(forecast(fit, xreg=newX,h=h))%>%
       rename(Estimate = Point.Forecast, L95 = Lo.95, U95 =Hi.95)%>%
-      dplyr::select(Estimate, L95,U95)
+      mutate(SE=abs(U95/1.96))%>%
+      dplyr::select(Estimate,SE,L95,U95)
   }else{
     fit <- Arima(y,order=order,method="ML")
     #results<-forecast(fit,h=h)$mean[[1]]
     results<-data.frame(forecast(fit,h=h))%>%
       rename(Estimate = Point.Forecast, L95 = Lo.95, U95 = Hi.95)%>%
-      dplyr::select(Estimate, L95,U95)
+      mutate(SE=abs(U95/1.96))%>%
+      dplyr::select(Estimate,SE,L95,U95)
   }
   return(results)
 }
@@ -333,17 +336,17 @@ print(head(data.frame(dat)))
 Code below will download NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modelled SST data (ERSST_V5)
 ```{r get_covariate_data, message = FALSE, warning = FALSE,results = "hide"}
 #=========================================================
-#get NOAA indicator data, wrangle into usable format, plot
+#get NPGO data
 #=========================================================
 NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment="#")%>%
   filter(!is.na(X2))%>%
-  dplyr::rename(year=X1,Month=X2,NPGO=X3)%>%
-  mutate(year=as.numeric(year))%>%
-  group_by(year)%>%
+  dplyr::rename(Year=X1,Month=X2,NPGO=X3)%>%
+  mutate(Year=as.numeric(Year))%>%
+  group_by(Year)%>%
   add_tally()%>%
   filter(!Month>6)%>% #use only spring (Jan-June) NPGO
   #filter(!n < 12)%>% #use only complete years
-  group_by(year)%>%
+  group_by(Year)%>%
   dplyr::summarise(mean_NPGO=mean(NPGO))
 #=========================================================
 #get NOAA indicator data, wrangle into usable format, plot
