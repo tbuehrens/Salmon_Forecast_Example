@@ -73,6 +73,8 @@ fc <- function(y,Year, h, xreg, order){
   results<-results%>%
     bind_cols(data.frame(Year=Year))%>%
     dplyr::select(Year,Estimate,SE,L95,U95)
+  
+  results<-list(results=results,fit=fit)
   return(results)
 }
 
@@ -107,6 +109,8 @@ fc2 <- function(y, Year, h, xreg, order){
     rename(Estimate=fit,SE=se.fit)%>%
     bind_cols(data.frame(Year=Year))%>%
     dplyr::select(Year,Estimate,SE,L95,U95)
+  
+  results<-list(results=results,fit=fit)
   return(results)
 }
 
@@ -141,7 +145,9 @@ fc3<-function(TY,Year,vars,dat,formula,prior){
   preds<-preds%>%
     bind_cols(data.frame(Year=Year))%>%
     dplyr::select(Year,Estimate,SE,L95,U95)
-  return(preds)
+  
+  results<-list(results=preds,fit=mod)
+  return(results)
 }
 
 #one step ahead cross validation
@@ -149,10 +155,16 @@ tsCV2<-function(y,Year,xreg,fc,min,h,order){
   forecast<-data.frame(matrix(NA,ncol=5,nrow=1))
   colnames(forecast)<-c("Year","Estimate","SE","L95","U95")
   for(i in min:length(y)){
-    forecast[i+1,] = fc(y=y[1:i],Year=Year[i+1],xreg=xreg,h=h,order=order)
+    temp<-NULL
+    temp=fc(y=y[1:i],Year=Year[i+1],xreg=xreg,h=h,order=order)
+    forecast[i+1,] = temp$results
   }
-  results<-forecast%>%
+  forecast<-forecast%>%
     remove_rownames()
+  
+  results<-list()
+  results$results<-forecast
+  results$fit<-temp$fit
   return(results)
 }
 
@@ -374,14 +386,15 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
 #=========================================================
 #get NOAA indicator data, wrangle into usable format, plot
 #=========================================================
-# indicators<-read_csv("https://media.fisheries.noaa.gov/2021-04/Stoplight%20csv.csv?null",skip=1)%>%
-#   filter(!is.na(`Ecosystem Indicators`))%>%
-#   pivot_longer(names_to = "Year",
-#                 cols=c(starts_with("1"),starts_with("2")),
-#                 values_to = "value")%>%
-#   pivot_wider(names_from=`Ecosystem Indicators`,values_from=value)%>%
-#   mutate(Year=as.numeric(Year))
-# 
+#indicators<-read_csv("https://media.fisheries.noaa.gov/2021-04/Stoplight%20csv.csv?null",skip=1)%>%
+indicators<-read_csv("Stoplight csv.csv",skip=1)%>%
+  filter(!is.na(`Ecosystem Indicators`))%>%
+  pivot_longer(names_to = "Year",
+                cols=c(starts_with("1"),starts_with("2")),
+                values_to = "value")%>%
+  pivot_wider(names_from=`Ecosystem Indicators`,values_from=value)%>%
+  mutate(Year=as.numeric(Year))
+
 # plotdat<-indicators%>%pivot_longer(names_to = "indicators", cols = colnames(indicators)[colnames(indicators)!="Year"])
 # ggplot(plotdat,aes(x=value,color=indicators))+
 #   geom_density()+
@@ -486,36 +499,43 @@ dat<-dat%>%
     # PC1 = lag(mod$x[,1]),
     # PC2 = lag(mod$x[,2]),
     # PC3 = lag(mod$x[,3]),
-    #lag1_summerPDO = lag(scale(`PDO\n(Sum May-Sept)`)),
+    # lag1_summerPDO = lag(scale(`PDO\n(Sum May-Sept)`)),
     # lag1_springONI = lag(scale(`ONI\n(Average Jan-June)`)),
     # lag1_summerdeepSST = lag(scale(`Deep temperature\n(°C; May-Sept)`)),
     # lag1_summerdeepSalinity = lag(scale(`Deep salinity\n(May-Sept)`)),
-    #lag1_copepodrich = lag(scale(`Deep salinity\n(May-Sept)`)),
+    # lag1_copepodrich = lag(scale(`Deep salinity\n(May-Sept)`)),
     # lag1_icthy = lag(scale(`Nearshore Ichthyoplankton\nLog(mg C 1,000 m-3; Jan-Mar)`)),
     # lag1_cpueCO = lag(scale(log(`Steelhead salmon juvenile\ncatches (no. km-1; June)`))),
-    #lag1_phystrans = lag (scale(`Physical Spring Trans.\nUI based (day of year)`)),
+    # lag1_phystrans = lag (scale(`Physical Spring Trans.\nUI based (day of year)`)),
     # lag1_Ncope = lag(scale(`N. copepod biomass anom.\n(mg C m-3; May-Sept)`)),
-    #lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
+    # lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
     #lag1_PC1 = scale(lag(`Principal Component scores (PC1)`)),
-    #lag1_PC2 = lag(`Principal Component scores (PC2)`),
+    # lag1_PC2 = lag(`Principal Component scores (PC2)`),
     lag1_SAR1 = lag(scale(log(SAR1))),
     lag1_NPGO = lag(NPGO),
-    lag2_NPGO = lag(NPGO,2),
-    )%>%filter(!is.na(lag2_NPGO) & !is.na(lag1_SAR1)
+    lag2_NPGO = lag(NPGO,2)
     )
-#look at our data  
-print(data.frame(dat))
 ```
 
 # Set Parameters
 Here we specify parameters: how many years of training data to include in the training set (validation is the rest), how many years forward to forecast (typically 1), which regression covariates to include
-```{r set_parameters, message = FALSE, warning = FALSE,results = "hide"}
+```{r set_parameters, message = FALSE, warning = FALSE,results = "show"}
+#select variables to include in analysis and subset data
+vars<-c("lag1_SAR1","lag1_NPGO","lag2_NPGO") #what regression variables will we use?
+dat<-data.frame(dat)%>%
+  dplyr::select(Year,Steelhead,all_of(vars))%>%
+  filter(
+    across(
+      .cols = all_of(vars),
+      .fns = ~ !is.na(.x)
+    )
+  )
+#look at our data  
+print(data.frame(dat))
+
+#set model fitting and evaluation params
 TY <- dim(dat)[1]-12 #training years (years of training data)
 FY <- 1 #forecast years (years foreward to forecast)
-vars<-c("lag1_SAR1","lag1_NPGO","lag2_NPGO") #what regression variables will we use?
-dat<-data.frame(dat)%>%dplyr::select(Year,Steelhead,all_of(vars))
-#for gam fits and r-arima fits
-xreg=as.matrix(dat%>%dplyr::select(all_of(vars)))
 k = 1 #this is the model-averaging weighting exponent--default is 1, larger numbers will tend to more heavily weight "best" models over lower ranked models
 stack_metric = "MSA" #this is the performance measure that will be optimized to find the best stack weights
 ```
@@ -536,7 +556,7 @@ ARIMA100<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
 )
 ARIMA100_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=xreg,
+            xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
             h=FY,
             min=TY,
             fc=fc,
@@ -545,7 +565,7 @@ ARIMA100_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
 
 ARIMA111_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=xreg,
+            xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
             h=FY,
             min=TY,
             fc=fc,
@@ -553,7 +573,7 @@ ARIMA111_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
 )
 ARIMA010_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=xreg,
+            xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
             h=FY,
             min=TY,
             fc=fc,
@@ -577,7 +597,7 @@ ARIMA111<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
 )
 ARIMA101_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=xreg,
+            xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
             h=FY,
             min=TY,
             fc=fc,
@@ -604,7 +624,7 @@ gam<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
 )
 # LFO10<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
 #             Year=dat$Year,
-#             xreg=xreg,
+#             xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
 #             h=FY,
 #             min=TY,
 #             fc=fc2,
@@ -639,31 +659,25 @@ Here we will summarize our forecasts for the last year of our covariate data and
 #Summarize Forecasts
 #===================
 forecasts<-list(
-  ARIMA100 = ARIMA100
-  ,ARIMA100_withcov = ARIMA100_withcov
-  ,ARIMA111_withcov = ARIMA111_withcov
-  ,ARIMA111 = ARIMA111
-  ,ARIMA010_withcov = ARIMA010_withcov
-  ,ARIMA010 = ARIMA010
-  ,ARIMA101_withcov = ARIMA101_withcov
-  ,ARIMA101 = ARIMA101
-  ,gam = gam
-  #,gp_horseshoe = LFO11
+  ARIMA100 = ARIMA100$results
+  ,ARIMA100_withcov = ARIMA100_withcov$results
+  ,ARIMA111_withcov = ARIMA111_withcov$results
+  ,ARIMA111 = ARIMA111$results
+  ,ARIMA010_withcov = ARIMA010_withcov$results
+  ,ARIMA010 = ARIMA010$results
+  ,ARIMA101_withcov = ARIMA101_withcov$results
+  ,ARIMA101 = ARIMA101$results
+  ,gam = gam$results
+  #,gp_horseshoe = LFO11$results
 )%>%
-  map_dfr(~ .x %>% as_tibble(), .id = "Model")
-
-
-dat2<-forecasts%>%
-  mutate(Steelhead=exp(Estimate))%>%
-  dplyr::select(Year,Model,Steelhead)%>%
-  filter(!is.na(Steelhead))%>%
-  ungroup()
+  map_dfr(~ .x %>% as_tibble(), .id = "Model")%>%
+  filter(!is.na(Estimate))%>%
+  mutate(Estimate=exp(Estimate),L95=exp(L95),U95=exp(U95))%>%
+  dplyr::select(!SE)
 
 forecasts%>%
   group_by(Model)%>%
   filter(Year==max(Year,na.rm = T))%>%
-  dplyr::select(!SE)%>%
-  mutate(Estimate=exp(Estimate),U95=exp(U95),L95=exp(L95))%>%
   kbl(caption = "Table 1. Forecasts for final year of data.",digits =0)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
@@ -671,7 +685,7 @@ forecasts%>%
 #===========================
 #Plot of final year forecast
 #===========================
-ggplot(data=dat2,aes(x=Year,y=Steelhead,color=Model))+
+ggplot(data=forecasts,aes(x=Year,y=Estimate,color=Model))+
   labs(title="One-Year-Ahead Forecasts")+
   geom_line(size=1)+
   scale_color_brewer(palette="Spectral")+
@@ -683,15 +697,15 @@ ggplot(data=dat2,aes(x=Year,y=Steelhead,color=Model))+
 # Evaluate Forecasts
 Here we will evaluate forecasts using Mean Absolute Percent Error (MAPE), Root Mean Squared Error (RMSE), and Median Symmetric Accuracy (MSA). RMSE and MAPE tend to more heavily penalize over-forecasts relative to under-forecasts for abundance (because errors are right-skewed), whereas MSA is specifically tailored for right tailed distributions. We will also calculated model weights
 ```{r evaluate_forecasts, message = FALSE, warning = FALSE,results = "show"}
-dat3<-dat2%>%
+dat3<-forecasts%>%
   left_join(dat,by="Year")%>%
-  dplyr::select(Year,Model,Steelhead.x,Steelhead.y)%>%
-  mutate(error=Steelhead.y-Steelhead.x)%>%
+  dplyr::select(Year,Model,Estimate,Steelhead)%>%
+  mutate(error=Steelhead-Estimate)%>%
   filter(!is.na(error))%>%
   group_by(Model)%>%
   summarise(RMSE = sqrt(mean(error^2)),
-            MAPE = mean(abs(error/Steelhead.y))*100,
-            MSA = 100*(exp(mean(abs(log(Steelhead.y/Steelhead.x))))-1)
+            MAPE = mean(abs(error/Steelhead))*100,
+            MSA = 100*(exp(mean(abs(log(Steelhead/Estimate))))-1)
               )%>%
   arrange(MSA)
 
@@ -704,24 +718,23 @@ dat3%>%
 # Ensembles & Ensemble Performance
 Calculate leave-forward-out performance year by year in order to develop weighted ensembles (with recalculated weights each year). Then evaluate performance of these one-year-ahead ensembles.
 ````{r develop and evaluate ensembles, message = FALSE, warning = FALSE,results = "show"}
-yrrange<-dat2%>%
-  filter(!is.na(Steelhead))%>%
+yrrange<-forecasts%>%
   summarise(minyr=min(Year),maxyr=max(Year))%>%
   unlist()
 
 ensembles<-NULL
 for(i in 2: length(yrrange[1]:yrrange[2])){
   years<-c(yrrange[1]:(yrrange[1]+i-1))
-  tdat<-dat2%>%
+  tdat<-forecasts%>%
   filter(Year %in% years)%>%
   left_join(dat,by="Year")%>%
-  dplyr::select(Year,Model,Steelhead.x,Steelhead.y)%>%
-  mutate(error=Steelhead.y-Steelhead.x)%>%
+  dplyr::select(Year,Model,Estimate,Steelhead)%>%
+  mutate(error=Steelhead-Estimate)%>%
   filter(!is.na(error))%>%
   group_by(Model)%>%
   summarise(RMSE = sqrt(mean(error^2)),
-            MAPE = mean(abs(error/Steelhead.y))*100,
-            MSA = 100*(exp(mean(abs(log(Steelhead.y/Steelhead.x))))-1)
+            MAPE = mean(abs(error/Steelhead))*100,
+            MSA = 100*(exp(mean(abs(log(Steelhead/Estimate))))-1)
               )%>%
   arrange(MSA)%>%
   mutate(MSA_weight=(1/MSA)^k/sum((1/MSA)^k), 
@@ -729,12 +742,11 @@ for(i in 2: length(yrrange[1]:yrrange[2])){
          MAPE_weight =(1/MAPE)^k/sum((1/MAPE)^k)
   )
 
-  modelcnt<-length(unique(dat2$Model))
+  modelcnt<-length(unique(forecasts$Model))
   stackyears<-years[years!=max(years)]
-  stackdat<-dat2%>%
+  stackdat<-forecasts%>%
     filter(Year %in% years)%>%
-    filter(!is.na(Steelhead))%>%
-    pivot_wider(names_from = Model, values_from = Steelhead,id_cols = Year)%>%
+    pivot_wider(names_from = Model, values_from = Estimate,id_cols = Year)%>%
     left_join(dat%>%dplyr::select(Year,Steelhead))
 
   stack_weights<-find_stack_weights(tau=1,
@@ -757,8 +769,6 @@ for(i in 2: length(yrrange[1]:yrrange[2])){
 
   tdat2<-forecasts%>%
     filter(Year == max(years))%>%
-    dplyr::select(!SE)%>%
-    mutate(Estimate=exp(Estimate),L95=exp(L95),U95=exp(U95))%>%
     pivot_longer(names_to = "Parameter",
                  cols=c("Estimate","L95","U95"),
                  values_to = "value")%>%
@@ -803,7 +813,7 @@ ensembles%>%
 #=============================
 #calc performance of ensembles
 #=============================
-dat4<-bind_rows(forecasts%>%mutate(Estimate=exp(Estimate)),ensembles)%>%
+dat4<-bind_rows(forecasts,ensembles)%>%
   filter(Year>min(yrrange))%>%
   left_join(dat,by="Year")%>%
   dplyr::select(Year,Model,Estimate,Steelhead)%>%
