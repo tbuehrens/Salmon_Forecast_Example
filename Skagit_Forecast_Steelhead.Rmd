@@ -93,7 +93,7 @@ fc2 <- function(y, Year, h, xreg, order){
     }else(newX<-xreg[length(y)+(1:h)])
     dat<-data.frame(y,X,c(1:length(y)))
     colnames(dat)<-c("y",colnames(xreg),"year")
-    formula = as.formula(paste0("exp(y) ~ s(year, m=2, bs='ps',","k =",length(y)-floor(dim(xreg)[2]-4),") +",paste(colnames(xreg),collapse = "+")))
+    formula = as.formula(paste0("exp(y) ~ s(year, m=2, bs='ps',","k =",length(y),") +",paste(colnames(xreg),collapse = "+")))
     fit<-gam(formula=formula,data=dat,family="nb",link=log)
     newdat<-data.frame(newX,c(length(y)+1))
     colnames(newdat)<-c(colnames(xreg),"year")
@@ -338,11 +338,11 @@ install_or_load_pack(pack = packages_list)
 Here we will load and format our data for analysis. What you load is what you will forecast (so you can forecast run size or escapement)
 ```{r load_data, message = FALSE, warning = FALSE,results = "show"}
 #====================================
-#get columbia Steelhead data as example
+#get Skagit Steelhead data as example
 #====================================
 dat<-read_csv("https://raw.githubusercontent.com/tbuehrens/Skagit-River-Steelhead-Forecast/master/data/skagit_sthd_esc.csv")%>%
   left_join(read_csv("https://raw.githubusercontent.com/tbuehrens/Skagit-River-Steelhead-Forecast/master/data/skagit_sthd_catch.csv"))%>%
-  mutate(Steelhead=catch+escapement)%>%
+  mutate(runsize_obs=catch+escapement)%>%
   dplyr::rename(Year=year)
 
 Yrlist<-data.frame(Year=c(min(dat$Year):(max(dat$Year)+1)))
@@ -521,7 +521,7 @@ dat<-dat%>%
     # lag1_summerdeepSalinity = lag(scale(`Deep salinity\n(May-Sept)`)),
     # lag1_copepodrich = lag(scale(`Deep salinity\n(May-Sept)`)),
     # lag1_icthy = lag(scale(`Nearshore Ichthyoplankton\nLog(mg C 1,000 m-3; Jan-Mar)`)),
-    # lag1_cpueCO = lag(scale(log(`Steelhead salmon juvenile\ncatches (no. km-1; June)`))),
+    # lag1_cpueCO = lag(scale(log(`Chinook salmon juvenile\ncatches (no. km-1; June)`))),
     # lag1_phystrans = lag (scale(`Physical Spring Trans.\nUI based (day of year)`)),
     # lag1_Ncope = lag(scale(`N. copepod biomass anom.\n(mg C m-3; May-Sept)`)),
     # lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
@@ -539,8 +539,8 @@ Here we specify parameters: how many years of training data to include in the tr
 #select variables to include in analysis and subset data
 vars<-c("lag2_NPGO","lag2_CFS") #what regression variables will we use?
 dat<-data.frame(dat)%>%
-  #ilter(Year>1999)%>% #get rid of years with sketchy
-  dplyr::select(Year,Steelhead,all_of(vars))%>%
+  #filter(Year>1999)%>% #get rid of years with sketchy
+  dplyr::select(Year,runsize_obs,all_of(vars))%>%
   filter(
     across(
       .cols = all_of(vars),
@@ -563,7 +563,7 @@ Here we will fit ARIMA and GAM forecasts
 #==========
 #ARIMA models
 #==========
-ARIMA100<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA100<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=NULL,
             h=FY,
@@ -571,7 +571,7 @@ ARIMA100<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             fc=fc,
             order=c(1,0,0)
 )
-ARIMA100_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA100_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
             h=FY,
@@ -579,7 +579,7 @@ ARIMA100_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             fc=fc,
             order=c(1,0,0)
 )
-ARIMA111_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA111_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
             h=FY,
@@ -587,7 +587,7 @@ ARIMA111_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             fc=fc,
             order=c(1,1,1)
 )
-ARIMA010_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA010_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
             h=FY,
@@ -595,7 +595,7 @@ ARIMA010_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             fc=fc,
             order=c(0,1,0)
 )
-ARIMA010<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA010<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=NULL,
             h=FY,
@@ -603,7 +603,7 @@ ARIMA010<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             fc=fc,
             order=c(0,1,0)
 )
-# ARIMA111<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+# ARIMA111<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 #             Year=dat$Year,
 #             xreg=NULL,
 #             h=FY,
@@ -611,7 +611,7 @@ ARIMA010<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
 #             fc=fc,
 #             order=c(1,1,1)
 # )
-ARIMA101_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA101_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
             h=FY,
@@ -619,7 +619,7 @@ ARIMA101_withcov<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             fc=fc,
             order=c(1,0,1)
 )
-ARIMA101<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+ARIMA101<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=NULL,
             h=FY,
@@ -627,10 +627,26 @@ ARIMA101<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             fc=fc,
             order=c(1,0,1)
 )
+ARIMA001_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
+            h=FY,
+            min=TY,
+            fc=fc,
+            order=c(0,0,1)
+)
+ARIMA001<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=NULL,
+            h=FY,
+            min=TY,
+            fc=fc,
+            order=c(0,0,1)
+)
 #==========
 #GAM models
 #==========
-gam<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+gam<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=NULL,
             h=FY,
@@ -638,7 +654,7 @@ gam<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
             fc=fc2,
             order=c(NA,NA,NA)
 )
-# LFO10<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
+# LFO10<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 #             Year=dat$Year,
 #             xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
 #             h=FY,
@@ -654,7 +670,7 @@ gam<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
 #   TY=TY
 #   ,vars=vars
 #   ,dat=dat
-#   ,formula = as.formula(paste0("log(Steelhead) ~ gp(Year) + ",paste(vars,collapse = "+")))
+#   ,formula = as.formula(paste0("log(runsize_obs) ~ gp(Year) + ",paste(vars,collapse = "+")))
 #   ,prior = set_prior(horseshoe(df = 1, par_ratio = 0.5), class="b")
 # )
 
@@ -663,7 +679,7 @@ gam<-tsCV2(y=log(dat$Steelhead[-dim(dat)[1]]),
 #   TY=TY
 #   ,vars=vars
 #   ,dat=dat
-#   ,formula = as.formula(paste0("log(Steelhead) ~ arma(p = 1, q = 1, cov=TRUE) + ",paste(vars,collapse = "+")))
+#   ,formula = as.formula(paste0("log(runsize_obs) ~ arma(p = 1, q = 1, cov=TRUE) + ",paste(vars,collapse = "+")))
 #   ,prior = set_prior(horseshoe(df = 1, par_ratio = 0.5), class="b")
 # )
 ```
@@ -683,6 +699,8 @@ forecasts<-list(
   ,ARIMA010 = ARIMA010$results
   ,ARIMA101_withcov = ARIMA101_withcov$results
   ,ARIMA101 = ARIMA101$results
+  ,ARIMA001_withcov = ARIMA001_withcov$results
+  ,ARIMA001 = ARIMA001$results
   ,gam = gam$results
   #,gp_horseshoe = LFO11$results
 )%>%
@@ -705,7 +723,7 @@ ggplot(data=forecasts,aes(x=Year,y=Estimate,color=Model))+
   labs(title="One-Year-Ahead Forecasts")+
   geom_line(size=1)+
   scale_color_brewer(palette="Spectral")+
-  geom_point(data=dat,mapping=aes(x=Year,y=Steelhead),size=2,color="black")+
+  geom_point(data=dat,mapping=aes(x=Year,y=runsize_obs),size=2,color="black")+
   ylim(0,NA)+
   theme_bw()
 ```
@@ -715,13 +733,13 @@ Here we will evaluate forecasts using Mean Absolute Percent Error (MAPE), Root M
 ```{r evaluate_forecasts, message = FALSE, warning = FALSE,results = "show"}
 dat3<-forecasts%>%
   left_join(dat,by="Year")%>%
-  dplyr::select(Year,Model,Estimate,Steelhead)%>%
-  mutate(error=Steelhead-Estimate)%>%
+  dplyr::select(Year,Model,Estimate,runsize_obs)%>%
+  mutate(error=runsize_obs-Estimate)%>%
   filter(!is.na(error))%>%
   group_by(Model)%>%
   summarise(RMSE = sqrt(mean(error^2)),
-            MAPE = mean(abs(error/Steelhead))*100,
-            MSA = 100*(exp(mean(abs(log(Steelhead/Estimate))))-1)
+            MAPE = mean(abs(error/runsize_obs))*100,
+            MSA = 100*(exp(mean(abs(log(runsize_obs/Estimate))))-1)
               )%>%
   arrange(MSA)
 
@@ -744,13 +762,13 @@ for(i in 2: length(yrrange[1]:yrrange[2])){
   tdat<-forecasts%>%
   filter(Year %in% years)%>%
   left_join(dat,by="Year")%>%
-  dplyr::select(Year,Model,Estimate,Steelhead)%>%
-  mutate(error=Steelhead-Estimate)%>%
+  dplyr::select(Year,Model,Estimate,runsize_obs)%>%
+  mutate(error=runsize_obs-Estimate)%>%
   filter(!is.na(error))%>%
   group_by(Model)%>%
   summarise(RMSE = sqrt(mean(error^2)),
-            MAPE = mean(abs(error/Steelhead))*100,
-            MSA = 100*(exp(mean(abs(log(Steelhead/Estimate))))-1)
+            MAPE = mean(abs(error/runsize_obs))*100,
+            MSA = 100*(exp(mean(abs(log(runsize_obs/Estimate))))-1)
               )%>%
   arrange(MSA)%>%
   mutate(MSA_weight=(1/MSA)^k/sum((1/MSA)^k), 
@@ -763,23 +781,23 @@ for(i in 2: length(yrrange[1]:yrrange[2])){
   stackdat<-forecasts%>%
     filter(Year %in% years)%>%
     pivot_wider(names_from = Model, values_from = Estimate,id_cols = Year)%>%
-    left_join(dat%>%dplyr::select(Year,Steelhead))
+    left_join(dat%>%dplyr::select(Year,runsize_obs))
 
   stack_weights<-find_stack_weights(tau=1,
                      n=10000,
                      metric=stack_metric,
                      initial_weights=rep(1/modelcnt,modelcnt),
                      preds=stackdat%>%
-                       filter(!is.na(Steelhead))%>%
-                       dplyr::select(!Steelhead & !Year)%>%
+                       filter(!is.na(runsize_obs))%>%
+                       dplyr::select(!runsize_obs & !Year)%>%
                        as.matrix(),
                      obs=stackdat%>%
-                       filter(!is.na(Steelhead))%>%
-                       dplyr::select(Steelhead & !Year)%>%
+                       filter(!is.na(runsize_obs))%>%
+                       dplyr::select(runsize_obs & !Year)%>%
                        as.matrix()
                      )
   stacking_weights<-data.frame("Stacking_weight" = as.vector(round(unlist(stack_weights[[1]]),4)))
-  stacking_weights$Model<-colnames(stackdat)[!colnames(stackdat)%in%c("Year","Steelhead")]
+  stacking_weights$Model<-colnames(stackdat)[!colnames(stackdat)%in%c("Year","runsize_obs")]
   tdat<-tdat%>%
     left_join(stacking_weights)
 
@@ -832,14 +850,14 @@ ensembles%>%
 dat4<-bind_rows(forecasts,ensembles)%>%
   filter(Year>min(yrrange))%>%
   left_join(dat,by="Year")%>%
-  dplyr::select(Year,Model,Estimate,Steelhead)%>%
-  mutate(error=Steelhead-Estimate)%>%
+  dplyr::select(Year,Model,Estimate,runsize_obs)%>%
+  mutate(error=runsize_obs-Estimate)%>%
   filter(!is.na(error))%>%
   #dplyr::select(Year,Model,error)%>%
   group_by(Model)%>%
   summarise(RMSE = sqrt(mean(error^2)),
-            MAPE = mean(abs(error/Steelhead))*100,
-            MSA = 100*(exp(mean(abs(log(Steelhead/Estimate))))-1)
+            MAPE = mean(abs(error/runsize_obs))*100,
+            MSA = 100*(exp(mean(abs(log(runsize_obs/Estimate))))-1)
   )%>%
   arrange(MSA)
 
@@ -854,8 +872,48 @@ ggplot(data=ensembles,aes(x=Year,y=Estimate,color=Model))+
   labs(title="One-Year-Ahead Ensemble Forecasts")+
   geom_line(size=1)+
   scale_color_brewer(palette="Spectral")+
-  geom_point(data=dat,mapping=aes(x=Year,y=Steelhead),size=2,color="black")+
+  geom_point(data=dat,mapping=aes(x=Year,y=runsize_obs),size=2,color="black")+
   ylim(0,NA)+
   theme_bw()
 ```
 
+# Best Model
+````{r best model, message = FALSE, warning = FALSE,results = "show"}
+best_model<-forecasts%>%
+  bind_rows(ensembles)%>%
+  mutate(sd=abs(log(U95)-log(Estimate))/1.96)%>%
+  left_join(dat4)%>%
+  filter(get(stack_metric)==min(get(stack_metric)))
+
+#==============
+#plot Best Model
+#==============
+ggplot(data=best_model,aes(x=Year,y=Estimate,color=Model))+
+  geom_ribbon(aes(ymin=L95,ymax=U95,,fill=Model),color=NA,alpha=0.4)+
+  facet_wrap(~Model,ncol=1)+
+  labs(title="Best Model One-Year-Ahead Forecasts")+
+  geom_line(size=1)+
+  scale_color_brewer(palette="Spectral")+
+  geom_point(data=dat,mapping=aes(x=Year,y=runsize_obs),size=2,color="black")+
+  ylim(0,NA)+
+  theme_bw()
+
+best_mu<-log(best_model%>%filter(Year==max(Year))%>%dplyr::select(Estimate))%>%unlist()
+best_sd<-best_model%>%filter(Year==max(Year))%>%dplyr::select(sd)%>%unlist()
+best_draws=data.frame(Estimate=rlnorm(10000,mean=best_mu,sd=best_sd[1]))
+
+ggplot(data=best_draws,aes(x=Estimate,color=NA),alpha=0.4)+
+  geom_density(aes(fill="Estimate"))+
+  xlim(0,quantile(best_draws$Estimate,0.995))+
+  labs(title="Best Model One-Year-Ahead Forecasts")+
+  scale_color_brewer(palette="Spectral")+
+  ylim(0,NA)+
+  theme_bw()
+
+best_model%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm=T))%>%
+  dplyr::select(Model,Year,Estimate,L95,U95)%>%
+  kbl(caption = "Table 5. Best model forecasts one year ahead of final year of data.",digits =0)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
