@@ -249,7 +249,7 @@ div.tocify {
 
 
 <hr />
-<p>This document was generated on 12/03/2021.</p>
+<p>This document was generated on 12/06/2021.</p>
 <hr />
 <div id="purpose" class="section level1">
 <h1>Purpose</h1>
@@ -568,7 +568,8 @@ install_or_load_pack(pack = packages_list)</code></pre>
 dat&lt;-read_csv(&quot;http://www.cbr.washington.edu/dart/cs/php/rpt/adult_annual.php?sc=1&amp;outputFormat=csv&amp;proj=BON&amp;startdate=5%2F15&amp;enddate=12%2F31&quot;)%&gt;%
   arrange(Year)%&gt;%
   dplyr::select(Year, Steelhead)%&gt;%
-  mutate(`runsize_obs`=ifelse(as.numeric(Year)&lt;=as.numeric(format(Sys.Date(),&quot;%Y&quot;)),`Steelhead`,NA))%&gt;%
+  dplyr::rename(runsize_obs=Steelhead)%&gt;%
+  mutate(`runsize_obs`=ifelse(as.numeric(Year)&lt;=as.numeric(format(Sys.Date(),&quot;%Y&quot;)),`runsize_obs`,NA))%&gt;%
   filter(!is.na(Year))
 
 Yrlist&lt;-data.frame(Year=c(min(dat$Year):(max(dat$Year)+1)))
@@ -578,17 +579,17 @@ dat&lt;-dat%&gt;%
     
 #look at our data  
 print(tail(data.frame(dat)))</code></pre>
-<pre><code>##    Year Steelhead runsize_obs
-## 80 2017    115165      115165
-## 81 2018     99805       99805
-## 82 2019     75385       75385
-## 83 2020    111350      111350
-## 84 2021     70128       70128
-## 85 2022        NA          NA</code></pre>
+<pre><code>##    Year runsize_obs
+## 80 2017      115165
+## 81 2018       99805
+## 82 2019       75385
+## 83 2020      111350
+## 84 2021       70128
+## 85 2022          NA</code></pre>
 </div>
 <div id="get-covariate-data-optional" class="section level1">
 <h1>Get Covariate Data (optional)</h1>
-<p>Code below will download NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modelled SST data (ERSST_V5)</p>
+<p>Code below will download NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modeled SST data (ERSST_V5)</p>
 <pre class="r"><code>#=========================================================
 #get PIT tag survival/age data
 #=========================================================

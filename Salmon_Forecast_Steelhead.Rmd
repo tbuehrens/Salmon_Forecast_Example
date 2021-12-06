@@ -342,7 +342,8 @@ Here we will load and format our data for analysis. What you load is what you wi
 dat<-read_csv("http://www.cbr.washington.edu/dart/cs/php/rpt/adult_annual.php?sc=1&outputFormat=csv&proj=BON&startdate=5%2F15&enddate=12%2F31")%>%
   arrange(Year)%>%
   dplyr::select(Year, Steelhead)%>%
-  mutate(`runsize_obs`=ifelse(as.numeric(Year)<=as.numeric(format(Sys.Date(),"%Y")),`Steelhead`,NA))%>%
+  dplyr::rename(runsize_obs=Steelhead)%>%
+  mutate(`runsize_obs`=ifelse(as.numeric(Year)<=as.numeric(format(Sys.Date(),"%Y")),`runsize_obs`,NA))%>%
   filter(!is.na(Year))
 
 Yrlist<-data.frame(Year=c(min(dat$Year):(max(dat$Year)+1)))
