@@ -355,7 +355,7 @@ print(tail(data.frame(dat)))
 ```
 
 # Get Covariate Data (optional)
-Code below will download NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modelled SST data (ERSST_V5)
+Code below will download NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modeled SST data (ERSST_V5)
 ```{r get_covariate_data, message = FALSE, warning = FALSE,results = "hide"}
 #=========================================================
 #get PIT tag survival/age data
@@ -387,13 +387,13 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
 #get NOAA indicator data, wrangle into usable format, plot
 #=========================================================
 #indicators<-read_csv("https://media.fisheries.noaa.gov/2021-04/Stoplight%20csv.csv?null",skip=1)%>%
-indicators<-read_csv("Stoplight csv.csv",skip=1)%>%
-  filter(!is.na(`Ecosystem Indicators`))%>%
-  pivot_longer(names_to = "Year",
-                cols=c(starts_with("1"),starts_with("2")),
-                values_to = "value")%>%
-  pivot_wider(names_from=`Ecosystem Indicators`,values_from=value)%>%
-  mutate(Year=as.numeric(Year))
+# indicators<-read_csv("Stoplight csv.csv",skip=1)%>%
+#   filter(!is.na(`Ecosystem Indicators`))%>%
+#   pivot_longer(names_to = "Year",
+#                 cols=c(starts_with("1"),starts_with("2")),
+#                 values_to = "value")%>%
+#   pivot_wider(names_from=`Ecosystem Indicators`,values_from=value)%>%
+#   mutate(Year=as.numeric(Year))
 
 # plotdat<-indicators%>%pivot_longer(names_to = "indicators", cols = colnames(indicators)[colnames(indicators)!="Year"])
 # ggplot(plotdat,aes(x=value,color=indicators))+

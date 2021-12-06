@@ -619,13 +619,13 @@ NPGO&lt;-read_table(&quot;http://www.o3d.org/npgo/npgo.php&quot;,skip=29,col_nam
 #get NOAA indicator data, wrangle into usable format, plot
 #=========================================================
 #indicators&lt;-read_csv(&quot;https://media.fisheries.noaa.gov/2021-04/Stoplight%20csv.csv?null&quot;,skip=1)%&gt;%
-indicators&lt;-read_csv(&quot;Stoplight csv.csv&quot;,skip=1)%&gt;%
-  filter(!is.na(`Ecosystem Indicators`))%&gt;%
-  pivot_longer(names_to = &quot;Year&quot;,
-                cols=c(starts_with(&quot;1&quot;),starts_with(&quot;2&quot;)),
-                values_to = &quot;value&quot;)%&gt;%
-  pivot_wider(names_from=`Ecosystem Indicators`,values_from=value)%&gt;%
-  mutate(Year=as.numeric(Year))
+# indicators&lt;-read_csv(&quot;Stoplight csv.csv&quot;,skip=1)%&gt;%
+#   filter(!is.na(`Ecosystem Indicators`))%&gt;%
+#   pivot_longer(names_to = &quot;Year&quot;,
+#                 cols=c(starts_with(&quot;1&quot;),starts_with(&quot;2&quot;)),
+#                 values_to = &quot;value&quot;)%&gt;%
+#   pivot_wider(names_from=`Ecosystem Indicators`,values_from=value)%&gt;%
+#   mutate(Year=as.numeric(Year))
 
 # plotdat&lt;-indicators%&gt;%pivot_longer(names_to = &quot;indicators&quot;, cols = colnames(indicators)[colnames(indicators)!=&quot;Year&quot;])
 # ggplot(plotdat,aes(x=value,color=indicators))+
