@@ -1,0 +1,6 @@
+"0","#============================="
+"0","#calc performance of ensembles"
+"0","#============================="
+"0","ensemble_results$forecast_skill%>%"
+"0","  kbl(caption = ""Table 5. One-year ahead performance of model & model ensemble forecasts. Ensemble weights recalculated annually using weights based on one-head performance up to to and including the year prior to the forecast year. Year one of one-year ahead fits not included since an ensemble cannot be computed for this year."",digits =3)%>%"
+"0","  kable_classic(full_width = F, html_font = ""Cambria"")"

@@ -1,0 +1,8 @@
+"0","#======================================="
+"0","#Table of final year ensemable forecasts"
+"0","#======================================="
+"0","ensemble_results$ensembles%>%"
+"0","  group_by(Model)%>%"
+"0","  filter(Year==max(Year,na.rm=T))%>%"
+"0","  kbl(caption = ""Table 4. Ensemble forecasts one year ahead of final year of data."",digits =0)%>%"
+"0","  kable_classic(full_width = F, html_font = ""Cambria"")"

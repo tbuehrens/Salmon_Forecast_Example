@@ -1,0 +1,18 @@
+"0","flow<-read_table(flow_url,skip=29)%>%
+  dplyr::rename(Date=`20d`,CFS=`14n`)%>%
+  dplyr::select(Date,CFS)%>%
+  mutate(Year=year(Date),Month=month(Date),Year=ifelse(Month>5,Year + 1, Year))%>%
+  group_by(Year)%>%
+  dplyr::summarise(CFS=max(CFS))
+"
+"1","
+[36m--[39m [1m[1mColumn specification[1m[22m [36m---------------------------------------------------------------------------------[39m
+cols(
+  `5s` = [31mcol_character()[39m,
+  `15s` = [32mcol_double()[39m,
+  `20d` = [34mcol_date(format = """")[39m,
+  `14n` = [32mcol_double()[39m,
+  `10s` = [31mcol_character()[39m
+)
+
+"

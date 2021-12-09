@@ -1,0 +1,7 @@
+"0","forecast_skill<-evaluate_forecasts(forecasts=forecasts,observations=dat)"
+"0","#======================="
+"0","#Table of Forecast Skill"
+"0","#======================="
+"0","forecast_skill%>%"
+"0","  kbl(caption = ""Table 2.Forecast Performance based on full set of one-year-ahead forecasts."",digits =3)%>%"
+"0","  kable_classic(full_width = F, html_font = ""Cambria"")"

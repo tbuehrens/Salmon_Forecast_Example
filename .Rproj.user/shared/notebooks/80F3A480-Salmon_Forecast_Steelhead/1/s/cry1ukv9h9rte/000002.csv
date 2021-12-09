@@ -1,0 +1,3 @@
+"0","rmarkdown::render(inputFile, encoding = encoding, output_dir = ""../html"") "
+"2","Error in character(length(x)) : object 'inputFile' not found
+"
