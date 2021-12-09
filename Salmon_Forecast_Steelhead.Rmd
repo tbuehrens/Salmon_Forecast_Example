@@ -3,6 +3,7 @@ title: Salmon Forecasts Example
 author: Thomas Buehrens 
 output:
   html_document:
+    code_folding: hide
     fig_caption: yes
     theme: cerulean
     toc: yes
@@ -15,30 +16,28 @@ output:
 
 ***
 
-This document was generated on `r format(Sys.time(), '%m/%d/%Y')`.
+Last Updated `r format(Sys.time(), '%m/%d/%Y')`.
 
 ***
 
+# Overview
+This script fits log-normal Generalized Additive Models and ARIMA models to salmon run-size data with or without regression covariates. These models are then used to generate one-year-ahead forecasts. The data used to fit the models is split into "training" and "validation" sets to evaluate performance of the one-year-ahead forecasts, compare models, and develop weighted "ensemble" forecasts.
 
-```{r set_options, echo = FALSE, message = FALSE}
+
+# Setup
+All analyses require R software [**(link)**](https://cran.r-project.org/) (v3.4.3) for data retrieval, data processing, and summarizing model results. Here we configure R to perform our analysis and generate our outputs
+```{r set_options, echo = TRUE, message = FALSE}
 options(width = 100)
 knitr::opts_chunk$set(message = FALSE)
 set.seed(123)
 ```
-# Purpose
-This script fits log-normal Generalized Additive Models and ARIMA models to salmon run-size data with or without regression covariates. These models are then used to generate one-year-ahead forecasts. The data used to fit the models is split into "training" and "validation" sets to evaluate performance of the one-year-ahead forecasts, compare models, and develop weighted "ensemble" forecasts.
 
-# Requirements
-All analyses require R software [**(link)**](https://cran.r-project.org/) (v3.4.3) for data retrieval, data processing, and summarizing model results.  
-
-# Load Functions
 We also need a couple of helper functions which we will load from the functions folder, which we will load using the walk() function from the purrr package (which we will install if it is not already installed).
 ```{r load_funcs, message = FALSE, warning = FALSE,results = "hide"}
 wd_functions<-"functions"
 sapply(FUN = source, paste(wd_functions, list.files(wd_functions), sep="/"))
 ```
 
-# Packages
 Here we will load & install packages we need to use (needs internet connection if packages not already installed)
 ```{r load_packages, message = FALSE, warning = FALSE,results = "hide"}
 packages_list<-c("tidyverse"
@@ -51,6 +50,7 @@ packages_list<-c("tidyverse"
                  ,"gtools"
                  # ,"ggfortify"
                  ,"brms"
+                 ,"bsplus"
                  # ,"rnoaa"
                  # ,"ncdf4"
                  # ,"ncdf4.helpers"
@@ -61,8 +61,8 @@ packages_list<-c("tidyverse"
 install_or_load_pack(pack = packages_list)
 ```
 
-# Fish Data
-Here we will load and format our data for analysis. What you load is what you will forecast (so you can forecast run size or escapement)
+# Load Data
+Here we will load and format our data for analysis. First, we will load and format our fish data for analysis. What you load is what you will forecast (so you can forecast run size or escapement)
 ```{r load_data, message = FALSE, warning = FALSE,results = "show"}
 #====================================
 #get columbia Steelhead data as example
@@ -83,8 +83,7 @@ dat<-dat%>%
 print(tail(data.frame(dat)))
 ```
 
-# Get Covariate Data (optional)
-Code below will download NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modeled SST data (ERSST_V5)
+The section will (optionally) download from the web (or load from the data folder) NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modeled SST data (ERSST_V5), flow data, PIT tag data, or any other covariate data not included with the fish data that could assist in forecasting.
 ```{r get_covariate_data, message = FALSE, warning = FALSE,results = "hide"}
 #=========================================================
 #get PIT tag survival/age data
@@ -206,9 +205,9 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
 #          shape=F)
 ```
 
-# Merge Covariate Data (optional)
-If we loaded/downloaded covariate data (other than fish abundance) for use in forecasting, we can merge it with our fish data here
-```{r merge_covariate_data, message = FALSE, warning = FALSE,results = "hide"}
+
+If we loaded/downloaded covariate data (other than fish abundance) for use in forecasting, in this section we will merge it with our fish data to produce a final dataframe. Note the format below; the rest of the functions and sections rely on your data being formatted this way,
+```{r merge_covariate_data, message = FALSE, warning = FALSE,results = "show"}
 dat<-dat%>%
   left_join(PIT)%>%
   left_join(NPGO)%>%
@@ -244,11 +243,7 @@ dat<-dat%>%
     lag1_NPGO = lag(NPGO),
     lag2_NPGO = lag(NPGO,2)
     )
-```
 
-# Set Parameters
-Here we specify parameters: how many years of training data to include in the training set (validation is the rest), how many years forward to forecast (typically 1), which regression covariates to include
-```{r set_parameters, message = FALSE, warning = FALSE,results = "show"}
 #select variables to include in analysis and subset data
 vars<-c("lag1_SAR1","lag1_NPGO","lag2_NPGO") #what regression variables will we use?
 dat<-data.frame(dat)%>%
@@ -261,7 +256,11 @@ dat<-data.frame(dat)%>%
   )
 #look at our data  
 print(data.frame(dat))
+```
 
+# Set Parameters
+Here we specify parameters for our forecast training and evaluation: how many years of training data to include in the training set (validation is the rest), how many years forward to forecast (typically 1), and make some selections regarding which metric to use to evaluate forecast odel performance.
+```{r set_parameters, message = FALSE, warning = FALSE,results = "hide"}
 #set model fitting and evaluation params
 TY <- dim(dat)[1]-12 #training years (years of training data)
 FY <- 1 #forecast years (years foreward to forecast)
@@ -270,7 +269,7 @@ stack_metric = "MSA" #this is the performance measure that will be optimized to 
 ```
 
 # Fit Forecast Models
-Here we will fit ARIMA and GAM forecasts 
+Here we fit ARIMA and GAM forecasts 
 ```{r fit_forecasts, message = FALSE, warning = FALSE,results = "hide"}
 #==========
 #ARIMA models
@@ -454,7 +453,7 @@ forecast_skill%>%
 
 
 # Ensembles & Ensemble Performance
-Calculate leave-forward-out performance year by year in order to develop weighted ensembles (with recalculated weights each year). Then evaluate performance of these one-year-ahead ensembles and compare with original models.
+Calculate leave-forward-out performance year by year in order to develop weighted ensembles (with recalculated weights each year). Then evaluate performance of these one-year-ahead ensembles and compare with original models. Note that one fewer years of leave-forward-out forecasts is evaluated since an ensemble using previous years' forecast skill can only be created for the second through last years of leave-forward-out forecasts.
 ````{r develop and evaluate ensembles, message = FALSE, warning = FALSE,results = "show"}
 ensemble_results<-evaluate_forecasts_with_ensembles(forecasts = forecasts, observations = dat)
 #=================================
