@@ -1,0 +1,38 @@
+"0","#===================================="
+"0","#get Skagit Steelhead data as example"
+"0","#===================================="
+"0","dat<-read_csv(""https://raw.githubusercontent.com/tbuehrens/Skagit-River-Steelhead-Forecast/master/data/skagit_sthd_esc.csv"")%>%"
+"0","  left_join(read_csv(""https://raw.githubusercontent.com/tbuehrens/Skagit-River-Steelhead-Forecast/master/data/skagit_sthd_catch.csv""))%>%"
+"0","  mutate(runsize_obs=catch+escapement)%>%"
+"0","  dplyr::rename(Year=year)"
+"1","[1m[1mRows: [1m[22m[34m[34m43[34m[39m [1m[1mColumns: [1m[22m[34m[34m2[34m[39m
+"
+"1","[36m--[39m [1m[1mColumn specification[1m[22m [36m--------------------------------------------------------------------------------------------------------------------[39m
+[1mDelimiter:[22m "",""
+[32mdbl[39m (2): year, escapement
+"
+"1","
+[36mi[39m Use [38;5;251m[48;5;235m[38;5;251m[48;5;235m`spec()`[48;5;235m[38;5;251m[49m[39m to retrieve the full column specification for this data.
+[36mi[39m Specify the column types or set [38;5;251m[48;5;235m[38;5;251m[48;5;235m`show_col_types = FALSE`[48;5;235m[38;5;251m[49m[39m to quiet this message.
+"
+"1","[1m[1mRows: [1m[22m[34m[34m43[34m[39m [1m[1mColumns: [1m[22m[34m[34m2[34m[39m
+"
+"1","[36m--[39m [1m[1mColumn specification[1m[22m [36m--------------------------------------------------------------------------------------------------------------------[39m
+[1mDelimiter:[22m "",""
+[32mdbl[39m (2): year, catch
+"
+"1","
+[36mi[39m Use [38;5;251m[48;5;235m[38;5;251m[48;5;235m`spec()`[48;5;235m[38;5;251m[49m[39m to retrieve the full column specification for this data.
+[36mi[39m Specify the column types or set [38;5;251m[48;5;235m[38;5;251m[48;5;235m`show_col_types = FALSE`[48;5;235m[38;5;251m[49m[39m to quiet this message.
+"
+"1","Joining, by = ""year""
+"
+"0","Yrlist<-data.frame(Year=c(min(dat$Year):(max(dat$Year)+1)))"
+"0",""
+"0","dat<-dat%>%"
+"0","  right_join(Yrlist)"
+"1","Joining, by = ""Year""
+"
+"0","    "
+"0","#look at our data  "
+"0","print(tail(data.frame(dat)))"
