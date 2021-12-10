@@ -567,7 +567,7 @@ ARIMA100&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             xreg=NULL,
             h=FY,
             min=TY,
-            fc=fc,
+            type=&quot;ARIMA&quot;,
             order=c(1,0,0)
 )
 ARIMA100_withcov&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
@@ -575,7 +575,7 @@ ARIMA100_withcov&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             xreg=dat%&gt;%dplyr::select(all_of(vars))%&gt;%as.matrix(),
             h=FY,
             min=TY,
-            fc=fc,
+            type=&quot;ARIMA&quot;,
             order=c(1,0,0)
       )
 
@@ -584,7 +584,7 @@ ARIMA111_withcov&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             xreg=dat%&gt;%dplyr::select(all_of(vars))%&gt;%as.matrix(),
             h=FY,
             min=TY,
-            fc=fc,
+            type=&quot;ARIMA&quot;,
             order=c(1,1,1)
 )
 ARIMA010_withcov&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
@@ -592,7 +592,7 @@ ARIMA010_withcov&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             xreg=dat%&gt;%dplyr::select(all_of(vars))%&gt;%as.matrix(),
             h=FY,
             min=TY,
-            fc=fc,
+            type=&quot;ARIMA&quot;,
             order=c(0,1,0)
 )
 ARIMA010&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
@@ -600,7 +600,7 @@ ARIMA010&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             xreg=NULL,
             h=FY,
             min=TY,
-            fc=fc,
+            type=&quot;ARIMA&quot;,
             order=c(0,1,0)
 )
 # ARIMA111&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
@@ -608,7 +608,7 @@ ARIMA010&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 #             xreg=NULL,
 #             h=FY,
 #             min=TY,
-#             fc=fc,
+#             type=&quot;ARIMA&quot;,
 #             order=c(1,1,1)
 # )
 ARIMA101_withcov&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
@@ -616,7 +616,7 @@ ARIMA101_withcov&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             xreg=dat%&gt;%dplyr::select(all_of(vars))%&gt;%as.matrix(),
             h=FY,
             min=TY,
-            fc=fc,
+            type=&quot;ARIMA&quot;,
             order=c(1,0,1)
 )
 ARIMA101&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
@@ -624,7 +624,7 @@ ARIMA101&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             xreg=NULL,
             h=FY,
             min=TY,
-            fc=fc,
+            type=&quot;ARIMA&quot;,
             order=c(1,0,1)
 )
 ARIMA001_withcov&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
@@ -632,7 +632,7 @@ ARIMA001_withcov&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             xreg=dat%&gt;%dplyr::select(all_of(vars))%&gt;%as.matrix(),
             h=FY,
             min=TY,
-            fc=fc,
+            type=&quot;ARIMA&quot;,
             order=c(0,0,1)
 )
 ARIMA001&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
@@ -640,7 +640,7 @@ ARIMA001&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             xreg=NULL,
             h=FY,
             min=TY,
-            fc=fc,
+            type=&quot;ARIMA&quot;,
             order=c(0,0,1)
 )
 #==========
@@ -651,16 +651,18 @@ gam&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             xreg=NULL,
             h=FY,
             min=TY,
-            fc=fc2,
-            order=c(NA,NA,NA)
+            type=&quot;gam&quot;,
+            m=2,
+            knots=dim(dat)[1]-1
 )
 # LFO10&lt;-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 #             Year=dat$Year,
 #             xreg=dat%&gt;%dplyr::select(all_of(vars))%&gt;%as.matrix(),
 #             h=FY,
 #             min=TY,
-#             fc=fc2,
-#             order=c(NA,NA,NA)
+#             type=&quot;gam&quot;
+#             m=1,
+#             knots=dim(dat)[1]-1
 # )
 #================================
 #BRMS models with Horseshoe Prior

@@ -1,5 +1,5 @@
 #fc2 fit model for gam 
-fc2 <- function(y, Year, h, xreg, order){
+fc2 <- function(y, Year, h, xreg, knots, m){
   if(!is.null(xreg)){
     if(ncol(xreg)>1){
       X <- xreg[1:length(y),]
@@ -13,7 +13,7 @@ fc2 <- function(y, Year, h, xreg, order){
     }else(newX<-xreg[length(y)+(1:h)])
     dat<-data.frame(y,X,c(1:length(y)))
     colnames(dat)<-c("y",colnames(xreg),"year")
-    formula = as.formula(paste0("exp(y) ~ s(year, m=2, bs='ps',","k =",length(y)-floor(dim(xreg)[2]-4),") +",paste(colnames(xreg),collapse = "+")))
+    formula = as.formula(paste0("exp(y) ~ s(year, m=",m,", bs='ps',","k =",knots,") +",paste(colnames(xreg),collapse = "+")))
     fit<-gam(formula=formula,data=dat,family="nb",link=log)
     newdat<-data.frame(newX,c(length(y)+1))
     colnames(newdat)<-c(colnames(xreg),"year")
