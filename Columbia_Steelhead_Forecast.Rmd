@@ -1,5 +1,5 @@
 ---
-title: Skagit Steelhead Forecast
+title: Col. R. S. Sth. Forecast @ BON (5/15 - 12/31)
 author: Thomas Buehrens 
 output:
   html_document:
@@ -30,7 +30,6 @@ Last Updated `r format(Sys.time(), '%m/%d/%Y')`.
 # Overview
 This script fits log-normal Generalized Additive Models and ARIMA models to salmon run-size data with or without regression covariates. These models are then used to generate one-year-ahead forecasts. The data used to fit the models is split into "training" and "validation" sets to evaluate performance of the one-year-ahead forecasts, compare models, and develop weighted "ensemble" forecasts. The code repository used to generate this page and complete analyses can be found here: [**(link)**](https://github.com/tbuehrens/Salmon_Forecast_Example)
 
-
 # Setup
 All analyses require R software [**(link)**](https://cran.r-project.org/) (v3.4.3) for data retrieval, data processing, and summarizing model results. Here we configure R to perform our analysis and generate our outputs
 ```{r set_options, echo = TRUE, message = FALSE}
@@ -56,8 +55,8 @@ packages_list<-c("tidyverse"
                  ,"kableExtra"
                  ,"gtools"
                  # ,"ggfortify"
-                 ,"lubridate"
                  ,"brms"
+                 ,"bsplus"
                  # ,"rnoaa"
                  # ,"ncdf4"
                  # ,"ncdf4.helpers"
@@ -72,15 +71,17 @@ install_or_load_pack(pack = packages_list)
 Here we will load and format our data for analysis. First, we will load and format our fish data for analysis. What you load is what you will forecast (so you can forecast run size or escapement)
 ```{r load_data, message = FALSE, warning = FALSE,results = "show"}
 #====================================
-#get Skagit Steelhead data as example
+#get columbia Steelhead data as example
 #====================================
-dat<-read_csv("https://raw.githubusercontent.com/tbuehrens/Skagit-River-Steelhead-Forecast/master/data/skagit_sthd_esc.csv")%>%
-  left_join(read_csv("https://raw.githubusercontent.com/tbuehrens/Skagit-River-Steelhead-Forecast/master/data/skagit_sthd_catch.csv"))%>%
-  mutate(runsize_obs=catch+escapement)%>%
-  dplyr::rename(Year=year)
+dat<-read_csv("http://www.cbr.washington.edu/dart/cs/php/rpt/adult_annual.php?sc=1&outputFormat=csv&proj=BON&startdate=5%2F15&enddate=12%2F31")%>%
+  arrange(Year)%>%
+  dplyr::select(Year, Steelhead)%>%
+  dplyr::rename(runsize_obs=Steelhead)%>%
+  mutate(`runsize_obs`=ifelse(as.numeric(Year)<=as.numeric(format(Sys.Date(),"%Y")),`runsize_obs`,NA))%>%
+  filter(!is.na(Year))
 
 Yrlist<-data.frame(Year=c(min(dat$Year):(max(dat$Year)+1)))
-
+             
 dat<-dat%>%
   right_join(Yrlist)
     
@@ -90,25 +91,18 @@ print(tail(data.frame(dat)))
 
 The section will (optionally) download from the web (or load from the data folder) NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modeled SST data (ERSST_V5), flow data, PIT tag data, or any other covariate data not included with the fish data that could assist in forecasting.
 ```{r get_covariate_data, message = FALSE, warning = FALSE,results = "hide"}
-#=============
-#get flow data
-#=============
-flow<-get_flow_data(flow_site =  12200500, min_year = min(dat$Year),max_year = max(dat$Year))%>%
-    mutate(Year=year(Date),Month=month(Date),Year=ifelse(Month>5,Year + 1, Year))%>%
-    group_by(Year)%>%
-    dplyr::summarise(CFS=max(CFS))
 #=========================================================
 #get PIT tag survival/age data
 #=========================================================
-# PIT<-read_csv("data/Columbia_Steelhead_SAR_DART_11_1_2021.csv")%>%
-#   dplyr::rename(OutmigrationYear=year)%>%
-#   mutate(Year=OutmigrationYear+1)%>%
-#   filter(Pop=="SNA")
-# 
-# SAR1<-data.frame(SAR1=gam(cbind(ocean1Count,juvCount-ocean1Count)~s(OutmigrationYear,k=(dim(PIT)[1])),family=binomial,data=PIT)$fitted)
-# 
-# PIT<-PIT%>%
-#   bind_cols(SAR1)
+PIT<-read_csv("data/Columbia_Steelhead_SAR_DART_11_1_2021.csv")%>%
+  dplyr::rename(OutmigrationYear=year)%>%
+  mutate(Year=OutmigrationYear+1)%>%
+  filter(Pop=="SNA")
+
+SAR1<-data.frame(SAR1=gam(cbind(ocean1Count,juvCount-ocean1Count)~s(OutmigrationYear,k=(dim(PIT)[1])),family=binomial,data=PIT)$fitted)
+
+PIT<-PIT%>%
+  bind_cols(SAR1)
 
 #=========================================================
 #get NPGO data
@@ -221,8 +215,7 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
 If we loaded/downloaded covariate data (other than fish abundance) for use in forecasting, in this section we will merge it with our fish data to produce a final dataframe. Note the format below; the rest of the functions and sections rely on your data being formatted this way,
 ```{r merge_covariate_data, message = FALSE, warning = FALSE,results = "show"}
 dat<-dat%>%
-  left_join(flow)%>%
-  #left_join(PIT)%>%
+  left_join(PIT)%>%
   left_join(NPGO)%>%
   #left_join(indicators)%>%
   #left_join(ssta)%>%
@@ -252,12 +245,13 @@ dat<-dat%>%
     # lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
     #lag1_PC1 = scale(lag(`Principal Component scores (PC1)`)),
     # lag1_PC2 = lag(`Principal Component scores (PC2)`),
-    lag2_CFS = lag(scale(CFS),2),
+    lag1_SAR1 = lag(scale(log(SAR1))),
+    lag1_NPGO = lag(NPGO),
     lag2_NPGO = lag(NPGO,2)
     )
 
 #select variables to include in analysis and subset data
-vars<-c("lag2_CFS","lag2_NPGO") #what regression variables will we use?
+vars<-c("lag1_SAR1","lag1_NPGO","lag2_NPGO") #what regression variables will we use?
 dat<-data.frame(dat)%>%
   dplyr::select(Year,runsize_obs,all_of(vars))%>%
   filter(
@@ -327,14 +321,14 @@ ARIMA010<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             fc=fc,
             order=c(0,1,0)
 )
-# ARIMA111<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
-#             Year=dat$Year,
-#             xreg=NULL,
-#             h=FY,
-#             min=TY,
-#             fc=fc,
-#             order=c(1,1,1)
-# )
+ARIMA111<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=NULL,
+            h=FY,
+            min=TY,
+            fc=fc,
+            order=c(1,1,1)
+)
 ARIMA101_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
@@ -420,7 +414,7 @@ forecasts<-summarize_forecasts(
     ,"ARIMA111_withcov"
     ,"ARIMA010_withcov"
     ,"ARIMA010"
-    #,"ARIMA111"
+    ,"ARIMA111"
     ,"ARIMA101_withcov"
     ,"ARIMA101"
     ,"ARIMA001_withcov"
@@ -526,7 +520,7 @@ ggplot(data=best_model,aes(x=Year,y=Estimate,color=Model))+
 
 best_mu<-log(best_model%>%filter(Year==max(Year))%>%dplyr::select(Estimate))%>%unlist()
 best_sd<-best_model%>%filter(Year==max(Year))%>%dplyr::select(sd)%>%unlist()
-best_draws=data.frame(Estimate=rlnorm(25000,mean=best_mu,sd=best_sd[1]))
+best_draws=data.frame(Estimate=rlnorm(10000,mean=best_mu,sd=best_sd[1]))
 
 #=========================
 #Best model final year pdf

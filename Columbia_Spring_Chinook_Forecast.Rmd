@@ -1,5 +1,5 @@
 ---
-title: Salmon Forecasts Example
+title: Columbia R. Sp. Ck. Forecast @ BON (1/1 - 6/15)
 author: Thomas Buehrens 
 output:
   html_document:
@@ -14,6 +14,13 @@ output:
     toc_depth: '3'
 ---
 
+<script>
+   $(document).ready(function() {
+     $head = $('#header');
+     $head.prepend('<img src=\"https://privatelands.wdfw.wa.gov/wdfwlogo_clrnotxt.png"\" style=\"float: right;width: 150px;\"/>')
+   });
+</script>
+
 ***
 
 Last Updated `r format(Sys.time(), '%m/%d/%Y')`.
@@ -21,8 +28,7 @@ Last Updated `r format(Sys.time(), '%m/%d/%Y')`.
 ***
 
 # Overview
-This script fits log-normal Generalized Additive Models and ARIMA models to salmon run-size data with or without regression covariates. These models are then used to generate one-year-ahead forecasts. The data used to fit the models is split into "training" and "validation" sets to evaluate performance of the one-year-ahead forecasts, compare models, and develop weighted "ensemble" forecasts.
-
+This script fits log-normal Generalized Additive Models and ARIMA models to salmon run-size data with or without regression covariates. These models are then used to generate one-year-ahead forecasts. The data used to fit the models is split into "training" and "validation" sets to evaluate performance of the one-year-ahead forecasts, compare models, and develop weighted "ensemble" forecasts. The code repository used to generate this page and complete analyses can be found here: [**(link)**](https://github.com/tbuehrens/Salmon_Forecast_Example)
 
 # Setup
 All analyses require R software [**(link)**](https://cran.r-project.org/) (v3.4.3) for data retrieval, data processing, and summarizing model results. Here we configure R to perform our analysis and generate our outputs
@@ -65,13 +71,14 @@ install_or_load_pack(pack = packages_list)
 Here we will load and format our data for analysis. First, we will load and format our fish data for analysis. What you load is what you will forecast (so you can forecast run size or escapement)
 ```{r load_data, message = FALSE, warning = FALSE,results = "show"}
 #====================================
-#get columbia Steelhead data as example
+#get columbia spring chinook data as example
 #====================================
-dat<-read_csv("http://www.cbr.washington.edu/dart/cs/php/rpt/adult_annual.php?sc=1&outputFormat=csv&proj=BON&startdate=5%2F15&enddate=12%2F31")%>%
+dat<-read_csv("http://www.cbr.washington.edu/dart/cs/php/rpt/adult_annual.php?sc=1&outputFormat=csv&proj=BON&startdate=1%2F1&enddate=6%2F15")%>%
   arrange(Year)%>%
-  dplyr::select(Year, Steelhead)%>%
-  dplyr::rename(runsize_obs=Steelhead)%>%
+  dplyr::select(Year, Chinook, `Jack Chinook`)%>%
+  dplyr::rename(runsize_obs=Chinook)%>%
   mutate(`runsize_obs`=ifelse(as.numeric(Year)<=as.numeric(format(Sys.Date(),"%Y")),`runsize_obs`,NA))%>%
+  mutate(`Jack Chinook` = ifelse(`Jack Chinook`==0,NA,`Jack Chinook`))%>%
   filter(!is.na(Year))
 
 Yrlist<-data.frame(Year=c(min(dat$Year):(max(dat$Year)+1)))
@@ -88,15 +95,15 @@ The section will (optionally) download from the web (or load from the data folde
 #=========================================================
 #get PIT tag survival/age data
 #=========================================================
-PIT<-read_csv("data/Columbia_Steelhead_SAR_DART_11_1_2021.csv")%>%
-  dplyr::rename(OutmigrationYear=year)%>%
-  mutate(Year=OutmigrationYear+1)%>%
-  filter(Pop=="SNA")
-
-SAR1<-data.frame(SAR1=gam(cbind(ocean1Count,juvCount-ocean1Count)~s(OutmigrationYear,k=(dim(PIT)[1])),family=binomial,data=PIT)$fitted)
-
-PIT<-PIT%>%
-  bind_cols(SAR1)
+# PIT<-read_csv("data/Columbia_Steelhead_SAR_DART_11_1_2021.csv")%>%
+#   dplyr::rename(OutmigrationYear=year)%>%
+#   mutate(Year=OutmigrationYear+1)%>%
+#   filter(Pop=="SNA")
+# 
+# SAR1<-data.frame(SAR1=gam(cbind(ocean1Count,juvCount-ocean1Count)~s(OutmigrationYear,k=(dim(PIT)[1])),family=binomial,data=PIT)$fitted)
+# 
+# PIT<-PIT%>%
+#   bind_cols(SAR1)
 
 #=========================================================
 #get NPGO data
@@ -115,13 +122,13 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
 #get NOAA indicator data, wrangle into usable format, plot
 #=========================================================
 #indicators<-read_csv("https://media.fisheries.noaa.gov/2021-04/Stoplight%20csv.csv?null",skip=1)%>%
-# indicators<-read_csv("data/Stoplight csv.csv",skip=1)%>%
-#   filter(!is.na(`Ecosystem Indicators`))%>%
-#   pivot_longer(names_to = "Year",
-#                 cols=c(starts_with("1"),starts_with("2")),
-#                 values_to = "value")%>%
-#   pivot_wider(names_from=`Ecosystem Indicators`,values_from=value)%>%
-#   mutate(Year=as.numeric(Year))
+indicators<-read_csv("data/Stoplight csv.csv",skip=1)%>%
+  filter(!is.na(`Ecosystem Indicators`))%>%
+  pivot_longer(names_to = "Year",
+                cols=c(starts_with("1"),starts_with("2")),
+                values_to = "value")%>%
+  pivot_wider(names_from=`Ecosystem Indicators`,values_from=value)%>%
+  mutate(Year=as.numeric(Year))
 
 # plotdat<-indicators%>%pivot_longer(names_to = "indicators", cols = colnames(indicators)[colnames(indicators)!="Year"])
 # ggplot(plotdat,aes(x=value,color=indicators))+
@@ -158,9 +165,13 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
 #Get ERSST data: get_ersst_v5_data takes A LONG TIME (1 hr) vs. get_ersst_v5_data_V2 which is much quicker!
 #===========================================================================================================
 #dat<-get_ersst_v5_data(years=years,data.dir=getwd(),latrange=c(44,52),lonrange=c(-130,-120))
-# data.dir<-"C:/Users/buehrtwb/OneDrive - Washington State Executive Branch Agencies/Documents"
-# sstdat<-get_ersst_v5_data_V2(years=c(1980:2021),data.dir=data.dir ,ncfilename="SSTv5.nc",latrange=c(44,50),lonrange=c(-125,-120))
-# 
+# sstdat<-get_ersst_v5_data_V2(years=c(1980:2021),
+#                              data.dir="C:/Users/buehrtwb/OneDrive - Washington State Executive Branch Agencies/Documents" ,
+#                              ncfilename="SSTv5.nc",
+#                              latrange=c(44,50),
+#                              lonrange=c(-125,-120)
+#                              )
+
 # sstdat<-sstdat%>%
 #   mutate(sstdiff=c(NA,diff(resid)))
 # 
@@ -209,9 +220,9 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
 If we loaded/downloaded covariate data (other than fish abundance) for use in forecasting, in this section we will merge it with our fish data to produce a final dataframe. Note the format below; the rest of the functions and sections rely on your data being formatted this way,
 ```{r merge_covariate_data, message = FALSE, warning = FALSE,results = "show"}
 dat<-dat%>%
-  left_join(PIT)%>%
+  #left_join(PIT)%>%
   left_join(NPGO)%>%
-  #left_join(indicators)%>%
+  left_join(indicators)%>%
   #left_join(ssta)%>%
   mutate(
     # l1aprssta= lag(scale(m_04)),
@@ -233,19 +244,28 @@ dat<-dat%>%
     # lag1_summerdeepSalinity = lag(scale(`Deep salinity\n(May-Sept)`)),
     # lag1_copepodrich = lag(scale(`Deep salinity\n(May-Sept)`)),
     # lag1_icthy = lag(scale(`Nearshore Ichthyoplankton\nLog(mg C 1,000 m-3; Jan-Mar)`)),
-    # lag1_cpueCO = lag(scale(log(`Steelhead salmon juvenile\ncatches (no. km-1; June)`))),
+    # lag1_cpueCO = lag(scale(log(`Chinook salmon juvenile\ncatches (no. km-1; June)`))),
     # lag1_phystrans = lag (scale(`Physical Spring Trans.\nUI based (day of year)`)),
     # lag1_Ncope = lag(scale(`N. copepod biomass anom.\n(mg C m-3; May-Sept)`)),
     # lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
-    #lag1_PC1 = scale(lag(`Principal Component scores (PC1)`)),
-    # lag1_PC2 = lag(`Principal Component scores (PC2)`),
-    lag1_SAR1 = lag(scale(log(SAR1))),
-    lag1_NPGO = lag(NPGO),
-    lag2_NPGO = lag(NPGO,2)
+    lag1_JCK = lag(scale(log(`Jack Chinook`))),
+    lag1_PC1 = lag(scale(`Principal Component scores (PC1)`)),
+    lag1_PC2 = lag(scale(`Principal Component scores (PC2)`)),
+    lag2_PC1 = lag(scale(`Principal Component scores (PC1)`),2),
+    lag2_PC2 = lag(scale(`Principal Component scores (PC2)`),2),
+    lag1_NPGO = lag(scale(NPGO)),
+    lag2_NPGO = lag(scale(NPGO),2)
     )
 
 #select variables to include in analysis and subset data
-vars<-c("lag1_SAR1","lag1_NPGO","lag2_NPGO") #what regression variables will we use?
+vars<-c("lag1_JCK"
+        #,"lag1_PC1"
+        ,"lag2_PC1"
+        #,"lag1_PC2"
+        #,"lag2_PC2"
+        #,"lag1_NPGO"
+        #,"lag2_NPGO"
+        ) 
 dat<-data.frame(dat)%>%
   dplyr::select(Year,runsize_obs,all_of(vars))%>%
   filter(
@@ -262,7 +282,7 @@ print(data.frame(dat))
 Here we specify parameters for our forecast training and evaluation: how many years of training data to include in the training set (validation is the rest), how many years forward to forecast (typically 1), and make some selections regarding which metric to use to evaluate forecast odel performance.
 ```{r set_parameters, message = FALSE, warning = FALSE,results = "hide"}
 #set model fitting and evaluation params
-TY <- dim(dat)[1]-12 #training years (years of training data)
+TY <- dim(dat)[1]-15 #training years (years of training data)
 FY <- 1 #forecast years (years foreward to forecast)
 k = 1 #this is the model-averaging weighting exponent--default is 1, larger numbers will tend to more heavily weight "best" models over lower ranked models
 stack_metric = "MSA" #this is the performance measure that will be optimized to find the best stack weights
