@@ -1,0 +1,1 @@
+{"frames":[{"func":"tsCV2(y = log(dat$runsize_obs[-dim(dat)[1]]), Year = dat$Year, \n    xreg = NULL, h = FY, min = TY, type = \"ARIMA\", order = c(1, \n        0, 0))","file":"","line_number":0,"end_line_number":0,"character_number":0,"end_character_number":0}],"message":"Error in fc == \"gam\" : \n  comparison (1) is possible only for atomic and list types\n"}

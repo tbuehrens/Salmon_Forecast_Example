@@ -1,0 +1,13 @@
+"0","#=========="
+"0","#ARIMA models"
+"0","#=========="
+"0","ARIMA100<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),"
+"0","            Year=dat$Year,"
+"0","            xreg=NULL,"
+"0","            h=FY,"
+"0","            min=TY,"
+"0","            fc=fc,"
+"0","            order=c(1,0,0)"
+"0",")"
+"2","Error in y[1:i] : only 0's may be mixed with negative subscripts
+"

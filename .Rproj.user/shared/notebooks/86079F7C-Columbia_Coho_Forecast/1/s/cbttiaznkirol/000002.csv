@@ -1,0 +1,5 @@
+"0","#set model fitting and evaluation params"
+"0","TY <- dim(dat)[1]-15 #training years (years of training data)"
+"0","FY <- 1 #forecast years (years foreward to forecast)"
+"0","k = 1 #this is the model-averaging weighting exponent--default is 1, larger numbers will tend to more heavily weight ""best"" models over lower ranked models"
+"0","stack_metric = ""MSA"" #this is the performance measure that will be optimized to find the best stack weights"

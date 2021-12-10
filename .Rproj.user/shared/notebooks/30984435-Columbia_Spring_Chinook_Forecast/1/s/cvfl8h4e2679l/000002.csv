@@ -1,0 +1,11 @@
+"0","#========================================
+#Table of forecast results for final year
+#========================================
+forecasts%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm = T))%>%
+  kbl(caption = ""Table 1. Forecasts for final year of data."",digits =0)%>%
+  kable_classic(full_width = F, html_font = ""Cambria"")
+"
+"2","Error in dirname(to) : path too long
+"

@@ -1,0 +1,26 @@
+"0","#   scale_color_brewer(palette = ""Spectral"")+
+#   geom_line()+
+#   facet_wrap(~factor(year))
+# 
+# ggplot(sstdat,aes(x=factor(month),y=sstdiff,group=year))+
+#   geom_hline(yintercept=0,linetype=""dashed"")+
+#   scale_color_brewer(palette = ""Spectral"")+
+#   geom_line()+
+#   facet_wrap(~factor(year))
+# 
+ssta<-sstdat%>%
+  dplyr::select(year,month,resid)%>%
+  dplyr::rename(Year = year)%>%
+  mutate(month=as.numeric(month))%>%
+  mutate(Year=ifelse(month>9,Year+1,Year))%>%
+  group_by(Year)%>%
+  summarise(WSST_A = mean(resid[month>9|month<4]),
+            SSST_A = mean(resid[month<=9|month>=4]),
+            )%>%
+  mutate(diff_SSST_A = diff(SSST_A))
+"
+"2","Error: Problem with `mutate()` column `diff_SSST_A`.
+[34mi[39m `diff_SSST_A = diff(SSST_A)`.
+[34mi[39m `diff_SSST_A` must be size 42 or 1, not 41.
+[90mRun `rlang::last_error()` to see where the error occurred.[39m
+"

@@ -1,0 +1,42 @@
+"0","dat<-dat%>%
+  #left_join(PIT)%>%
+  left_join(NPGO)%>%
+  left_join(indicators)%>%
+  #left_join(ssta)%>%
+  mutate(
+    # l1aprssta= lag(scale(m_04)),
+    # l1mayssta= lag(scale(m_05)),
+    # l1junssta= lag(scale(m_06)),
+    # l1julssta= lag(scale(m_07)),
+    # l1augssta= lag(scale(m_08)),
+    # l1sepssta= lag(scale(m_09)),
+    # l1octssta= lag(scale(m_10)),
+    # l1novssta= lag(scale(m_11)),
+    # l1decssta= lag(scale(m_12)),
+    # l1FallSST= (lag(scale(m_10)) + lag(scale(m_11)) + lag(scale(m_12)))/3
+    # PC1 = lag(mod$x[,1]),
+    # PC2 = lag(mod$x[,2]),
+    # PC3 = lag(mod$x[,3]),
+    # lag1_summerPDO = lag(scale(`PDO\n(Sum May-Sept)`)),
+    # lag1_springONI = lag(scale(`ONI\n(Average Jan-June)`)),
+    # lag1_summerdeepSST = lag(scale(`Deep temperature\n(°C; May-Sept)`)),
+    # lag1_summerdeepSalinity = lag(scale(`Deep salinity\n(May-Sept)`)),
+    # lag1_copepodrich = lag(scale(`Deep salinity\n(May-Sept)`)),
+    # lag1_icthy = lag(scale(`Nearshore Ichthyoplankton\nLog(mg C 1,000 m-3; Jan-Mar)`)),
+    # lag1_cpueCO = lag(scale(log(`Chinook salmon juvenile\ncatches (no. km-1; June)`))),
+    # lag1_phystrans = lag (scale(`Physical Spring Trans.\nUI based (day of year)`)),
+    # lag1_Ncope = lag(scale(`N. copepod biomass anom.\n(mg C m-3; May-Sept)`)),
+    # lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
+    lag1_JCK = lag(scale(log(`Jack Chinook`))),
+    lag1_PC1 = lag(scale(`Principal Component scores (PC1)`)),
+    lag1_PC2 = lag(scale(`Principal Component scores (PC2)`)),
+    lag2_PC1 = lag(scale(`Principal Component scores (PC1)`),2),
+    lag2_PC2 = lag(scale(`Principal Component scores (PC2)`),2),
+    lag1_NPGO = lag(scale(NPGO)),
+    lag2_NPGO = lag(scale(NPGO),2)
+    )
+"
+"1","Joining, by = ""Year""
+"
+"1","Joining, by = ""Year""
+"
