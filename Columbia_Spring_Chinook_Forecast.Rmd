@@ -542,7 +542,7 @@ best_draws=data.frame(Estimate=rlnorm(10000,mean=best_mu,sd=best_sd[1]))
 ggplot(data=best_draws,aes(x=Estimate,color=NA),alpha=0.4)+
   geom_density(aes(fill="Estimate"))+
   xlim(0,quantile(best_draws$Estimate,0.995))+
-  labs(title="Best Model One-Year-Ahead Forecasts")+
+  labs(title="Best model forecast")+
   scale_color_brewer(palette="Spectral")+
   ylim(0,NA)+
   theme_bw()
@@ -554,7 +554,6 @@ best_model%>%
   group_by(Model)%>%
   filter(Year==max(Year,na.rm=T))%>%
   dplyr::select(Model,Year,Estimate,L95,U95)%>%
-  kbl(caption = "Table 5. Best model forecasts one year ahead of final year of data.",digits =0)%>%
+  kbl(caption = "Table 5. Best model forecast one year ahead of final year of data.",digits =0)%>%
   kable_classic(full_width = F, html_font = "Cambria")
-
 ```
