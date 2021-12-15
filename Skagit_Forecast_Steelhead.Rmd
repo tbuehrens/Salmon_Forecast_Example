@@ -127,13 +127,13 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
 #get NOAA indicator data, wrangle into usable format, plot
 #=========================================================
 #indicators<-read_csv("https://media.fisheries.noaa.gov/2021-04/Stoplight%20csv.csv?null",skip=1)%>%
-# indicators<-read_csv("data/Stoplight csv.csv",skip=1)%>%
-#   filter(!is.na(`Ecosystem Indicators`))%>%
-#   pivot_longer(names_to = "Year",
-#                 cols=c(starts_with("1"),starts_with("2")),
-#                 values_to = "value")%>%
-#   pivot_wider(names_from=`Ecosystem Indicators`,values_from=value)%>%
-#   mutate(Year=as.numeric(Year))
+indicators<-read_csv("data/Stoplight csv.csv",skip=1)%>%
+  filter(!is.na(`Ecosystem Indicators`))%>%
+  pivot_longer(names_to = "Year",
+                cols=c(starts_with("1"),starts_with("2")),
+                values_to = "value")%>%
+  pivot_wider(names_from=`Ecosystem Indicators`,values_from=value)%>%
+  mutate(Year=as.numeric(Year))
 
 # plotdat<-indicators%>%pivot_longer(names_to = "indicators", cols = colnames(indicators)[colnames(indicators)!="Year"])
 # ggplot(plotdat,aes(x=value,color=indicators))+
@@ -224,7 +224,7 @@ dat<-dat%>%
   left_join(flow)%>%
   #left_join(PIT)%>%
   left_join(NPGO)%>%
-  #left_join(indicators)%>%
+  left_join(indicators)%>%
   #left_join(ssta)%>%
   mutate(
     # l1aprssta= lag(scale(m_04)),
@@ -250,14 +250,15 @@ dat<-dat%>%
     # lag1_phystrans = lag (scale(`Physical Spring Trans.\nUI based (day of year)`)),
     # lag1_Ncope = lag(scale(`N. copepod biomass anom.\n(mg C m-3; May-Sept)`)),
     # lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
-    #lag1_PC1 = scale(lag(`Principal Component scores (PC1)`)),
-    # lag1_PC2 = lag(`Principal Component scores (PC2)`),
+    lag2_PC1 = scale(lag(`Principal Component scores (PC1)`,2)),
+    lag2_PC2 = lag(`Principal Component scores (PC2)`,2),
     lag2_CFS = lag(scale(CFS),2),
-    lag2_NPGO = lag(NPGO,2)
+    lag2_NPGO = lag(NPGO,2),
+    lag1_NPGO = lag(NPGO,1)
     )
 
 #select variables to include in analysis and subset data
-vars<-c("lag2_CFS","lag2_NPGO") #what regression variables will we use?
+vars<-c("lag2_CFS","lag2_NPGO")#,"lag2_PC1","lag2_PC2","lag1_NPGO") #what regression variables will we use?
 dat<-data.frame(dat)%>%
   dplyr::select(Year,runsize_obs,all_of(vars))%>%
   filter(
@@ -296,7 +297,7 @@ ARIMA100<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 )
 ARIMA100_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag2_CFS","lag2_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -305,7 +306,7 @@ ARIMA100_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA111_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag2_CFS","lag2_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -313,7 +314,7 @@ ARIMA111_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 )
 ARIMA010_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag2_CFS","lag2_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -337,7 +338,7 @@ ARIMA010<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 # )
 ARIMA101_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag2_CFS","lag2_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -353,7 +354,7 @@ ARIMA101<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 )
 ARIMA001_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select(all_of(vars))%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag2_CFS","lag2_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -399,7 +400,6 @@ gam<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 #   ,formula = as.formula(paste0("log(runsize_obs) ~ gp(Year) + ",paste(vars,collapse = "+")))
 #   ,prior = set_prior(horseshoe(df = 1, par_ratio = 0.5), class="b")
 # )
-
 # LFO12<-fc3(
 #   Year=dat$Year,
 #   TY=TY
@@ -417,7 +417,7 @@ Here we will summarize our forecasts for the last year of our covariate data and
 #Summarize Forecasts
 #===================
 forecasts<-summarize_forecasts(
-  c("ARIMA100"
+   c("ARIMA100"
     ,"ARIMA100_withcov"
     ,"ARIMA111_withcov"
     ,"ARIMA010_withcov"
@@ -429,7 +429,7 @@ forecasts<-summarize_forecasts(
     ,"ARIMA001"
     ,"gam"
     # LFO10
-    #gp_horseshoe
+    #,"gp_horseshoe"
     #LFO12
     )
 )
