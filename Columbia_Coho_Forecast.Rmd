@@ -1,5 +1,5 @@
 ---
-title: Columbia R. Sp. Ck. Forecast @ BON (1/1 - 6/15)
+title: Columbia R. Coho Forecast @ BON
 author: Thomas Buehrens 
 output:
   html_document:
@@ -104,7 +104,6 @@ The section will (optionally) download from the web (or load from the data folde
 # 
 # PIT<-PIT%>%
 #   bind_cols(SAR1)
-
 #=========================================================
 #get NPGO data
 #=========================================================
