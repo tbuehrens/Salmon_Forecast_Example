@@ -83,7 +83,7 @@ dat<-read_excel("data/CR_Steelhead_returns_forecasts.xlsx")%>%
   mutate(`runsize_obs`=ifelse(as.numeric(Year)<=as.numeric(format(Sys.Date(),"%Y")),`runsize_obs`,NA))%>%
   filter(!is.na(Year))
 
-Yrlist<-data.frame(Year=c(min(dat$Year):(max(dat$Year))))
+Yrlist<-data.frame(Year=c(min(dat$Year):(max(dat$Year)+1)))
              
 dat<-dat%>%
   right_join(Yrlist)
