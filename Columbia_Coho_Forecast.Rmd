@@ -77,7 +77,7 @@ dat<-read_csv("http://www.cbr.washington.edu/dart/cs/php/rpt/adult_annual.php?sc
   arrange(Year)%>%
   dplyr::select(Year, Coho, `Jack Coho`)%>%
   dplyr::rename(runsize_obs=Coho)%>%
-  mutate(`runsize_obs`=ifelse(as.numeric(Year)<=as.numeric(format(Sys.Date(),"%Y")),`runsize_obs`,NA))%>%
+  mutate(`runsize_obs`=ifelse(as.numeric(Year)<as.numeric(format(Sys.Date(),"%Y")) & runsize_obs!=0,`runsize_obs`,NA))%>%
   mutate(`Jack Coho` = ifelse(`Jack Coho`==0,NA,`Jack Coho`))%>%
   filter(!is.na(Year))
 
@@ -164,9 +164,15 @@ indicators<-read_csv("data/Stoplight csv.csv",skip=1)%>%
 #Get ERSST data: get_ersst_v5_data takes A LONG TIME (1 hr) vs. get_ersst_v5_data_V2 which is much quicker!
 #===========================================================================================================
 #dat<-get_ersst_v5_data(years=years,data.dir=getwd(),latrange=c(44,52),lonrange=c(-130,-120))
+# sstdat<-get_ersst_v5_data_V2(years=c(1980:2021),
+#                              data.dir="C:/Users/buehrtwb/OneDrive - Washington State Executive Branch Agencies/Documents" ,
+#                              ncfilename="SSTv5.nc",
+#                              latrange=c(44,50),
+#                              lonrange=c(-125,-120)
+#                              )
 sstdat<-get_ersst_v5_data_V2(years=c(1980:2021),
                              data.dir="C:/Users/buehrtwb/OneDrive - Washington State Executive Branch Agencies/Documents" ,
-                             ncfilename="SSTv5.nc",
+                             ncfilename="sst.mnmean.nc",
                              latrange=c(44,50),
                              lonrange=c(-125,-120)
                              )
