@@ -1,0 +1,698 @@
+---
+title: Skagit Sockeye Forecast
+author: Casey Ruff 
+output:
+  html_document:
+    code_folding: hide
+    fig_caption: yes
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+#<script>
+#   $(document).ready(function() {
+#     $head = $('#header');
+#     $head.prepend('<img src=\"https://privatelands.wdfw.wa.gov/wdfwlogo_clrnotxt.png"\" style=\"float: right;width: #150px;\"/>')
+#   });
+#</script>
+
+***
+
+Last Updated `r format(Sys.time(), '%m/%d/%Y')`.
+
+***
+
+# Overview
+This script applies time series modeling methods developed by Thomas Buehrens (WDFW) to Baker River Sockeye. Specifically, it fits log-normal Generalized Additive Models and ARIMA models to salmon run-size data with or without regression covariates. These models are then used to generate one-year-ahead forecasts. The data used to fit the models is split into "training" and "validation" sets to evaluate performance of the one-year-ahead forecasts, compare models, and develop weighted "ensemble" forecasts. The originalcode repository used to generate this page and complete analyses can be found here: [**(link)**](https://github.com/tbuehrens/Salmon_Forecast_Example)
+
+
+# Setup
+All analyses require R software [**(link)**](https://cran.r-project.org/) (v3.4.3) for data retrieval, data processing, and summarizing model results. Here we configure R to perform our analysis and generate our outputs
+```{r set_options, echo = TRUE, message = FALSE}
+options(width = 100)
+knitr::opts_chunk$set(message = FALSE)
+set.seed(123)
+```
+
+We also need a couple of helper functions which we will load from the functions folder, which we will load using the walk() function from the purrr package (which we will install if it is not already installed).
+```{r load_funcs, message = FALSE, warning = FALSE,results = "hide"}
+wd_functions<-"functions"
+sapply(FUN = source, paste(wd_functions, list.files(wd_functions), sep="/"))
+```
+
+Here we will load & install packages we need to use (needs internet connection if packages not already installed)
+```{r load_packages, message = FALSE, warning = FALSE,results = "hide"}
+
+# if(!require("readr")) {
+#   install.packages("readr")
+#   library("readr")
+# }
+# 
+# if(!require("here")) {
+#   install.packages("here")
+#   library("here")
+# }
+# 
+# if(!require("tidyverse")) {
+#   install.packages("tidyverse")
+#   library("tidyverse")
+# }
+# 
+# if(!require("forecast")) {
+#   install.packages("forecast")
+#   library("forecast")
+# }
+# 
+# if(!require("mgcv")) {
+#   install.packages("mgcv")
+#   library("mgcv")
+# }
+# 
+# if(!require("ggplot2")) {
+#   install.packages("ggplot2")
+#   library("ggplot2")
+# }
+# 
+# if(!require("MASS")) {
+#   install.packages("MASS")
+#   library("MASS")
+# }
+# 
+# if(!require("RColorBrewer")) {
+#   install.packages("RColorBrewer")
+#   library("RColorBrewer")
+# }
+# 
+# if(!require("kableExtra")) {
+#   install.packages("kableExtra")
+#   library("kableExtra")
+# }
+# 
+# if(!require("gtools")) {
+#   install.packages("gtools")
+#   library("gtools")
+# }
+# 
+# if(!require("lubridate")) {
+#   install.packages("lubridate")
+#   library("lubridate")
+# }
+# 
+# # if(!require("brms")) {
+# #   install.packages("brms")
+# #   library("brms")
+# # }
+
+
+packages_list<-c("readr"
+                 ,"tidyverse"
+                 ,"forecast"
+                 ,"mgcv"
+                 ,"ggplot2"
+                 ,"MASS"
+                 ,"RColorBrewer"
+                 ,"kableExtra"
+                 ,"gtools"
+                 # ,"ggfortify"
+                 ,"lubridate"
+                 #,"brms"
+                 ,"here"
+                 # ,"rnoaa"
+                 # ,"ncdf4"
+                 # ,"ncdf4.helpers"
+                 # ,"raster"
+                 # ,"reshape2"
+                 # ,"ggfortify"
+                 #
+                 )
+install_or_load_pack(pack = packages_list)
+
+## set data dir
+datadir <- here("data")
+```
+
+# Load Data
+Here we will load and format our data for analysis. First, we will load and format our fish data for analysis. What you load is what you will forecast (so you can forecast run size or escapement)
+```{r load_data, message = FALSE, warning = FALSE,results = "show"}
+#====================================
+#get Skagit Sockeye data as example
+#====================================
+
+dat_all <- read_csv(file.path(datadir, "baker_sockeye_SAR.csv"))
+
+dat_OA2_SAR <- dat_all[,c(1,9)]
+dat_OA3_SAR <- dat_all[,c(1,10)]
+
+
+Yrlist_OA2<-data.frame(Year=c(min(dat_OA2_SAR$Year):(max(dat_OA2_SAR$Year)-1)))
+Yrlist_OA3<-data.frame(Year=c(min(dat_OA3_SAR$Year):(max(dat_OA3_SAR$Year)-2)))
+
+
+dat_OA2_SAR<-data.frame(dat_OA2_SAR%>%
+  right_join(Yrlist_OA2))
+
+dat_OA3_SAR<-data.frame(dat_OA3_SAR%>%
+  right_join(Yrlist_OA3))
+
+#look at our data  
+print(tail(data.frame(dat_OA2_SAR)))
+print(tail(data.frame(dat_OA3_SAR)))
+```
+
+The section will (optionally) download from the web (or load from the data folder) NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modeled SST data (ERSST_V5), flow data, PIT tag data, or any other covariate data not included with the fish data that could assist in forecasting.
+```{r get_covariate_data, message = FALSE, warning = FALSE,results = "hide"}
+#=============
+#get flow data
+#=============
+# flow<-get_flow_data(flow_site =  12200500, min_year = min(dat$Year),max_year = max(dat$Year))%>%
+#     mutate(Year=year(Date),Month=month(Date),Year=ifelse(Month>5,Year + 1, Year))%>%
+#     group_by(Year)%>%
+#     dplyr::summarise(CFS=max(CFS))
+#=========================================================
+#get PIT tag survival/age data
+#=========================================================
+# PIT<-read_csv("data/Columbia_Steelhead_SAR_DART_11_1_2021.csv")%>%
+#   dplyr::rename(OutmigrationYear=year)%>%
+#   mutate(Year=OutmigrationYear+1)%>%
+#   filter(Pop=="SNA")
+# 
+# SAR1<-data.frame(SAR1=gam(cbind(ocean1Count,juvCount-ocean1Count)~s(OutmigrationYear,k=(dim(PIT)[1])),family=binomial,data=PIT)$fitted)
+# 
+# PIT<-PIT%>%
+#   bind_cols(SAR1)
+
+#=========================================================
+#get NPGO data
+#=========================================================
+NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment="#")%>%
+  filter(!is.na(X2))%>%
+  dplyr::rename(Year=X1,Month=X2,NPGO=X3)%>%
+  mutate(Year=as.numeric(Year)+1)%>%
+  group_by(Year)%>%
+  add_tally()%>%
+  filter(Month == 12) #use only December NPGO
+  #filter(!n < 12)%>% #use only complete years
+  #group_by(Year)%>%
+  #dplyr::summarise(NPGO=mean(NPGO))
+
+
+#=========================================================
+#get NOAA indicator data, wrangle into usable format, plot
+#=========================================================
+#indicators<-read_csv("https://media.fisheries.noaa.gov/2021-04/Stoplight%20csv.csv?null",skip=1)%>%
+indicators<-read_csv("data/Stoplight csv.csv",skip=1)%>%
+  filter(!is.na(`Ecosystem Indicators`))%>%
+  pivot_longer(names_to = "Year",
+                cols=c(starts_with("1"),starts_with("2")),
+                values_to = "value")%>%
+  pivot_wider(names_from=`Ecosystem Indicators`,values_from=value)%>%
+  mutate(Year=as.numeric(Year))
+
+# plotdat<-indicators%>%pivot_longer(names_to = "indicators", cols = colnames(indicators)[colnames(indicators)!="Year"])
+# ggplot(plotdat,aes(x=value,color=indicators))+
+#   geom_density()+
+#   facet_wrap(~indicators,scales="free")+
+#   theme(legend.position = "none")
+
+#==============================================================
+# get NOAA sst data directly from Buoys (takes a while to run)
+#==============================================================
+# buoylist<-c(46229, 46211, 46041, 46029, 46050, 46097, 46098)
+# years<-c(1980:2021)
+# buoy_stations()%>%filter(lat > 44 & lat < 52 & lon > -130 & lon < -120)
+# buoydat<-getbuoydata(buoylist = buoylist,years=years)
+# write.csv(dat,"SST.csv",row.names = F)
+
+#===================
+#Plot Buoy SST data
+#====================
+# buoydat<-buoydat%>%
+#   filter(!is.na(buoyid) & !is.na(meanSST))%>%
+#   group_by(buoyid,month)%>%
+#   mutate(gmeanSST=mean(meanSST),resid=meanSST-gmeanSST)
+#   
+# 
+# ggplot(buoydat,aes(x=month,y=resid,group=factor(buoyid),color=factor(buoyid)))+
+#   geom_hline(yintercept=0,linetype="dashed")+
+#   scale_color_brewer(palette = "Spectral")+
+#   geom_line()+
+# facet_wrap(~factor(year))
+
+
+#===========================================================================================================
+#Get ERSST data: get_ersst_v5_data takes A LONG TIME (1 hr) vs. get_ersst_v5_data_V2 which is much quicker!
+#===========================================================================================================
+#dat<-get_ersst_v5_data(years=years,data.dir=getwd(),latrange=c(44,52),lonrange=c(-130,-120))
+# data.dir<-"C:/Users/buehrtwb/OneDrive - Washington State Executive Branch Agencies/Documents"
+# sstdat<-get_ersst_v5_data_V2(years=c(1980:2021),data.dir=data.dir ,ncfilename="SSTv5.nc",latrange=c(44,50),lonrange=c(-125,-120))
+# 
+# sstdat<-sstdat%>%
+#   mutate(sstdiff=c(NA,diff(resid)))
+# 
+# #================
+# #Plot ERSST data
+# #================
+# ggplot(sstdat,aes(x=factor(month),y=meanSST,group=year))+
+#   geom_hline(yintercept=0,linetype="dashed")+
+#   scale_color_brewer(palette = "Spectral")+
+#   geom_line()+
+#   facet_wrap(~factor(year))
+# 
+# ggplot(sstdat,aes(x=factor(month),y=resid,group=year))+
+#   geom_hline(yintercept=0,linetype="dashed")+
+#   scale_color_brewer(palette = "Spectral")+
+#   geom_line()+
+#   facet_wrap(~factor(year))
+# 
+# ggplot(sstdat,aes(x=factor(month),y=sstdiff,group=year))+
+#   geom_hline(yintercept=0,linetype="dashed")+
+#   scale_color_brewer(palette = "Spectral")+
+#   geom_line()+
+#   facet_wrap(~factor(year))
+# 
+# ssta<-sstdat%>%
+#   dplyr::select(year,month,resid)%>%
+#   mutate(month = paste0("m_",month))%>%
+#   rename(Year = year)%>%
+#   pivot_wider(names_from = month,values_from = resid)
+# 
+# pcdat<-ssta%>%
+#   ungroup()%>%
+#   filter(Year<2021)%>%
+#   column_to_rownames(var="Year")
+# mod<-prcomp(pcdat
+#             )
+# autoplot(mod,data=ssta%>%filter(Year<2021)%>%column_to_rownames(var="Year"),
+#          x=1,
+#          y=3,
+#          label = TRUE, 
+#          label.size = 3,
+#          shape=F)
+```
+
+
+If we loaded/downloaded covariate data (other than fish abundance) for use in forecasting, in this section we will merge it with our fish data to produce a final dataframe. Note the format below; the rest of the functions and sections rely on your data being formatted this way,
+```{r merge_covariate_data, message = FALSE, warning = FALSE,results = "show"}
+dat_OA2_SAR<-dat_OA2_SAR%>%
+  #left_join(PIT)%>%
+  left_join(NPGO)%>%
+  #left_join(ssta)%>%
+  mutate(
+    # l1aprssta= lag(scale(m_04)),
+    # l1mayssta= lag(scale(m_05)),
+    # l1junssta= lag(scale(m_06)),
+    # l1julssta= lag(scale(m_07)),
+    # l1augssta= lag(scale(m_08)),
+    # l1sepssta= lag(scale(m_09)),
+    # l1octssta= lag(scale(m_10)),
+    # l1novssta= lag(scale(m_11)),
+    # l1decssta= lag(scale(m_12)),
+    # l1FallSST= (lag(scale(m_10)) + lag(scale(m_11)) + lag(scale(m_12)))/3
+    # PC1 = lag(mod$x[,1]),
+    # PC2 = lag(mod$x[,2]),
+    # PC3 = lag(mod$x[,3]),
+    # lag1_summerPDO = lag(scale(`PDO\n(Sum May-Sept)`)),
+    # lag1_springONI = lag(scale(`ONI\n(Average Jan-June)`)),
+    # lag1_summerdeepSST = lag(scale(`Deep temperature\n(°C; May-Sept)`)),
+    # lag1_summerdeepSalinity = lag(scale(`Deep salinity\n(May-Sept)`)),
+    # lag1_copepodrich = lag(scale(`Deep salinity\n(May-Sept)`)),
+    # lag1_icthy = lag(scale(`Nearshore Ichthyoplankton\nLog(mg C 1,000 m-3; Jan-Mar)`)),
+    # lag1_cpueCO = lag(scale(log(`Steelhead salmon juvenile\ncatches (no. km-1; June)`))),
+    # lag1_phystrans = lag (scale(`Physical Spring Trans.\nUI based (day of year)`)),
+    # lag1_Ncope = lag(scale(`N. copepod biomass anom.\n(mg C m-3; May-Sept)`)),
+    # lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
+    )
+
+dat_OA3_SAR<-dat_OA3_SAR%>%
+  #left_join(PIT)%>%
+  left_join(NPGO)%>%
+  #left_join(ssta)%>%
+  mutate(
+    # l1aprssta= lag(scale(m_04)),
+    # l1mayssta= lag(scale(m_05)),
+    # l1junssta= lag(scale(m_06)),
+    # l1julssta= lag(scale(m_07)),
+    # l1augssta= lag(scale(m_08)),
+    # l1sepssta= lag(scale(m_09)),
+    # l1octssta= lag(scale(m_10)),
+    # l1novssta= lag(scale(m_11)),
+    # l1decssta= lag(scale(m_12)),
+    # l1FallSST= (lag(scale(m_10)) + lag(scale(m_11)) + lag(scale(m_12)))/3
+    # PC1 = lag(mod$x[,1]),
+    # PC2 = lag(mod$x[,2]),
+    # PC3 = lag(mod$x[,3]),
+    # lag1_summerPDO = lag(scale(`PDO\n(Sum May-Sept)`)),
+    # lag1_springONI = lag(scale(`ONI\n(Average Jan-June)`)),
+    # lag1_summerdeepSST = lag(scale(`Deep temperature\n(°C; May-Sept)`)),
+    # lag1_summerdeepSalinity = lag(scale(`Deep salinity\n(May-Sept)`)),
+    # lag1_copepodrich = lag(scale(`Deep salinity\n(May-Sept)`)),
+    # lag1_icthy = lag(scale(`Nearshore Ichthyoplankton\nLog(mg C 1,000 m-3; Jan-Mar)`)),
+    # lag1_cpueCO = lag(scale(log(`Steelhead salmon juvenile\ncatches (no. km-1; June)`))),
+    # lag1_phystrans = lag (scale(`Physical Spring Trans.\nUI based (day of year)`)),
+    # lag1_Ncope = lag(scale(`N. copepod biomass anom.\n(mg C m-3; May-Sept)`)),
+    # lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
+    )
+
+#select variables to include in analysis and subset data
+vars<-c("NPGO")#,"lag2_PC1","lag2_PC2","lag1_NPGO") #what regression variables will we use?
+dat_OA2_SAR<-data.frame(dat_OA2_SAR)%>%
+  dplyr::select(Year,OA2_SAR,all_of(vars))%>%
+  filter(
+    across(
+      .cols = all_of(vars),
+      .fns = ~ !is.na(.x)
+    )
+  )
+
+dat_OA3_SAR<-data.frame(dat_OA3_SAR)%>%
+  dplyr::select(Year,OA3_SAR,all_of(vars))%>%
+  filter(
+    across(
+      .cols = all_of(vars),
+      .fns = ~ !is.na(.x)
+    )
+  )
+
+#look at our data  
+print(data.frame(dat_OA2_SAR))
+print(data.frame(dat_OA3_SAR))
+```
+
+# Set Parameters
+Here we specify parameters for our forecast training and evaluation: how many years of training data to include in the training set (validation is the rest), how many years forward to forecast (typically 1), and make some selections regarding which metric to use to evaluate forecast model performance.
+```{r set_parameters, message = FALSE, warning = FALSE,results = "hide"}
+#set model fitting and evaluation params
+TY_OA2 <- dim(dat_OA2_SAR)[1]-12 #training years (years of training data)
+TY_OA3 <- dim(dat_OA3_SAR)[1]-12 #training years (years of training data)
+
+FY <- 1 #forecast years (years foreward to forecast)
+k = 1 #this is the model-averaging weighting exponent--default is 1, larger numbers will tend to more heavily weight "best" models over lower ranked models
+stack_metric = "MSA" #this is the performance measure that will be optimized to find the best stack weights
+```
+
+# Fit Forecast Models
+Here we fit ARIMA and GAM forecasts 
+```{r fit_forecasts, message = FALSE, warning = FALSE,results = "hide"}
+
+models_OA2_SAR <- fit_models(data = dat_OA2_SAR,TY_OA2)
+names(models_OA2_SAR) <- c("ARIMA100"
+    ,"ARIMA100_withcov"
+    ,"ARIMA111_withcov"
+    ,"ARIMA010_withcov"
+    ,"ARIMA010"
+    #,"ARIMA111"
+    ,"ARIMA101_withcov"
+    ,"ARIMA101"
+    ,"ARIMA001_withcov"
+    ,"ARIMA001"
+    ,"gam"
+    # LFO10
+    #,"gp_horseshoe"
+    #LFO12
+    )
+
+models_OA3_SAR <- fit_models(data = dat_OA3_SAR,TY_OA3)
+names(models_OA3_SAR) <- c("ARIMA100"
+    ,"ARIMA100_withcov"
+    ,"ARIMA111_withcov"
+    ,"ARIMA010_withcov"
+    ,"ARIMA010"
+    #,"ARIMA111"
+    ,"ARIMA101_withcov"
+    ,"ARIMA101"
+    ,"ARIMA001_withcov"
+    ,"ARIMA001"
+    ,"gam"
+    # LFO10
+    #,"gp_horseshoe"
+    #LFO12
+    )
+```
+
+# Summarize Forecasts 
+Here we will summarize our forecasts for the last year of our covariate data and we will plot our observed and forecasted runsize for all models
+```{r summarize_forecasts, message = FALSE, warning = FALSE, results = "asis", include=TRUE}
+#===================
+#Summarize Forecasts
+#===================
+forecasts_OA2_SAR<-summarize_forecasts(models_OA2_SAR)
+forecasts_OA3_SAR<-summarize_forecasts(models_OA3_SAR)
+
+#========================================
+#Table of forecast results for final year
+#========================================
+forecasts_OA2_SAR%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm = T))%>%
+  kbl(caption = "Table 1. OA2 survival forecasts for final year of data.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+forecasts_OA3_SAR%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm = T))%>%
+  kbl(caption = "Table 2. OA3 survival forecasts for final year of data.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+#===========================
+#Plot of final year forecast
+#===========================
+ggplot(data=forecasts_OA2_SAR,aes(x=Year,y=Estimate,color=Model))+
+  labs(title="One-Year-Ahead Forecasts 0A2 Survival")+
+  geom_line(size=1)+
+  scale_color_brewer(palette="Spectral")+
+  geom_point(data=dat_OA2_SAR,mapping=aes(x=Year,y=OA2_SAR),size=2,color="black")+
+  ylim(0,NA)+
+  theme_bw()
+
+ggplot(data=forecasts_OA3_SAR,aes(x=Year,y=Estimate,color=Model))+
+  labs(title="One-Year-Ahead Forecasts 0A3 Survival")+
+  geom_line(size=1)+
+  scale_color_brewer(palette="Spectral")+
+  geom_point(data=dat_OA3_SAR,mapping=aes(x=Year,y=OA3_SAR),size=2,color="black")+
+  ylim(0,NA)+
+  theme_bw()
+```
+
+# Evaluate Forecasts
+Here we will evaluate forecasts using Mean Absolute Percent Error (MAPE), Root Mean Squared Error (RMSE), and Median Symmetric Accuracy (MSA). RMSE and MAPE tend to more heavily penalize over-forecasts relative to under-forecasts for abundance (because errors are right-skewed), whereas MSA is specifically tailored for right tailed distributions. We will also calculated model weights
+```{r evaluate_forecasts, message = FALSE, warning = FALSE,results = "show"}
+forecast_skill_OA2_SAR<-evaluate_forecasts(forecasts=forecasts_OA2_SAR,observations=dat_OA2_SAR)
+forecast_skill_OA3_SAR<-evaluate_forecasts(forecasts=forecasts_OA3_SAR,observations=dat_OA3_SAR)
+
+#=======================
+#Table of Forecast Skill
+#=======================
+forecast_skill_OA2_SAR%>%
+  kbl(caption = "Table 3.OA2 survival forecast Performance based on full set of one-year-ahead forecasts.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+forecast_skill_OA3_SAR%>%
+  kbl(caption = "Table 4.OA3 survival forecast Performance based on full set of one-year-ahead forecasts.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+
+# Ensembles & Ensemble Performance
+Calculate leave-forward-out performance year by year in order to develop weighted ensembles (with recalculated weights each year). Then evaluate performance of these one-year-ahead ensembles and compare with original models. Note that one fewer years of leave-forward-out forecasts is evaluated since an ensemble using previous years' forecast skill can only be created for the second through last years of leave-forward-out forecasts.
+````{r develop and evaluate ensembles, message = FALSE, warning = FALSE,results = "show"}
+ensemble_results_OA2<-evaluate_forecasts_with_ensembles(forecasts = forecasts_OA2_SAR, observations = dat_OA2_SAR)
+
+ensemble_results_OA3<-evaluate_forecasts_with_ensembles(forecasts = forecasts_OA3_SAR, observations = dat_OA3_SAR)
+#=================================
+#Table of final year model weights
+#=================================
+ensemble_results_OA2$final_model_weights%>%
+  dplyr::select(Model, RMSE_weight, MAPE_weight, MSA_weight, Stacking_weight)%>%
+  kbl(caption = "Table 5. OA2 survival final Year Model Weights based on full dataset of one-year-ahead performance.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+ensemble_results_OA3$final_model_weights%>%
+  dplyr::select(Model, RMSE_weight, MAPE_weight, MSA_weight, Stacking_weight)%>%
+  kbl(caption = "Table 6. OA3 survival final Year Model Weights based on full dataset of one-year-ahead performance.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+#=======================================
+#Table of final year ensemable forecasts
+#=======================================
+ensemble_results_OA2$ensembles%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm=T))%>%
+  kbl(caption = "Table 7. OA2 ensemble forecasts one year ahead of final year of data.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+ensemble_results_OA3$ensembles%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm=T))%>%
+  kbl(caption = "Table 8. OA3 ensemble forecasts one year ahead of final year of data.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+#=============================
+#calc performance of ensembles
+#=============================
+ensemble_results_OA2$forecast_skill%>%
+  kbl(caption = "Table 9. OA2 survival one-year ahead performance of model & model ensemble forecasts. Ensemble weights recalculated annually using weights based on one-head performance up to to and including the year prior to the forecast year. Year one of one-year ahead fits not included since an ensemble cannot be computed for this year.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+ensemble_results_OA3$forecast_skill%>%
+  kbl(caption = "Table 10. OA3 survival one-year ahead performance of model & model ensemble forecasts. Ensemble weights recalculated annually using weights based on one-head performance up to to and including the year prior to the forecast year. Year one of one-year ahead fits not included since an ensemble cannot be computed for this year.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+#==============
+#plot ensemble forecasts
+#==============
+ggplot(data=ensemble_results_OA2$ensembles,aes(x=Year,y=Estimate,color=Model))+
+  labs(title="One-Year-Ahead Ensemble Forecasts")+
+  geom_line(size=1)+
+  scale_color_brewer(palette="Spectral")+
+  geom_point(data=dat_OA2_SAR,mapping=aes(x=Year,y=OA2_SAR),size=2,color="black")+
+  ylim(0,NA)+
+  theme_bw()
+
+ggplot(data=ensemble_results_OA3$ensembles,aes(x=Year,y=Estimate,color=Model))+
+  labs(title="One-Year-Ahead Ensemble Forecasts")+
+  geom_line(size=1)+
+  scale_color_brewer(palette="Spectral")+
+  geom_point(data=dat_OA3_SAR,mapping=aes(x=Year,y=OA3_SAR),size=2,color="black")+
+  ylim(0,NA)+
+  theme_bw()
+```
+
+# Best Model
+Identify the best model and plot and summarize its results
+````{r best model, message = FALSE, warning = FALSE,results = "show"}
+best_model_OA2 <- get_best_model(
+  forecasts = forecasts_OA2_SAR
+  ,ensembles = ensemble_results_OA2$ensembles
+  ,stack_metric = stack_metric
+  ,forecast_skill = ensemble_results_OA2$forecast_skill
+)
+
+best_model_OA3 <- get_best_model(
+  forecasts = forecasts_OA3_SAR
+  ,ensembles = ensemble_results_OA3$ensembles
+  ,stack_metric = stack_metric
+  ,forecast_skill = ensemble_results_OA3$forecast_skill
+)
+
+#==============
+#plot Best Model 
+#==============
+ggplot(data=best_model_OA2,aes(x=Year,y=Estimate,color=Model))+
+  #geom_ribbon(aes(ymin=L95,ymax=U95,,fill=Model),color=NA,alpha=0.4)+
+  facet_wrap(~Model,ncol=1)+
+  labs(title="OA2 survivval best Model One-Year-Ahead Forecasts")+
+  geom_line(size=1)+
+  scale_color_brewer(palette="Spectral")+
+  geom_point(data=dat_OA2_SAR,mapping=aes(x=Year,y=OA2_SAR),size=2,color="black")+
+  ylim(0,NA)+
+  theme_bw()
+
+ggplot(data=best_model_OA3,aes(x=Year,y=Estimate,color=Model))+
+  #geom_ribbon(aes(ymin=L95,ymax=U95,,fill=Model),color=NA,alpha=0.4)+
+  facet_wrap(~Model,ncol=1)+
+  labs(title="OA3 survivval best Model One-Year-Ahead Forecasts")+
+  geom_line(size=1)+
+  scale_color_brewer(palette="Spectral")+
+  geom_point(data=dat_OA3_SAR,mapping=aes(x=Year,y=OA3_SAR),size=2,color="black")+
+  ylim(0,NA)+
+  theme_bw()
+
+best_mu_OA2<-log(best_model_OA2%>%filter(Year==max(Year))%>%dplyr::select(Estimate))%>%unlist()
+best_sd_OA2<-best_model_OA2%>%filter(Year==max(Year))%>%dplyr::select(sd)%>%unlist()
+best_draws_OA2=data.frame(Estimate=rlnorm(25000,mean=best_mu_OA2,sd=best_sd_OA2[1]))
+
+best_mu_OA3<-log(best_model_OA3%>%filter(Year==max(Year))%>%dplyr::select(Estimate))%>%unlist()
+best_sd_OA3<-best_model_OA3%>%filter(Year==max(Year))%>%dplyr::select(sd)%>%unlist()
+best_draws_OA3=data.frame(Estimate=rlnorm(25000,mean=best_mu_OA3,sd=best_sd_OA3[1]))
+
+
+#=========================
+#Best model final year pdf
+#=========================
+ggplot(data=best_draws_OA2,aes(x=Estimate,color=NA),alpha=0.4)+
+  geom_density(aes(fill="Estimate"))+
+  xlim(0,quantile(best_draws_OA2$Estimate,0.995))+
+  labs(title="OA2 survival best Model Forecast")+
+  scale_color_brewer(palette="Spectral")+
+  ylim(0,NA)+
+  theme_bw()
+
+ggplot(data=best_draws_OA3,aes(x=Estimate,color=NA),alpha=0.4)+
+  geom_density(aes(fill="Estimate"))+
+  xlim(0,quantile(best_draws_OA3$Estimate,0.995))+
+  labs(title="OA3 survival best Model Forecast")+
+  scale_color_brewer(palette="Spectral")+
+  ylim(0,NA)+
+  theme_bw()
+
+
+## convert forecast of OA2 survival to returning adults
+OA2_Smolts_Pred <- dat_all$smolts[which(dat_all$Year %in% best_model_OA2$Year)]
+OA3_Smolts_Pred <- dat_all$smolts[which(dat_all$Year %in% best_model_OA3$Year)]
+
+OA2_Smolts_Pred <- dat_all$smolts[which(dat_all$Year %in% max(dat_OA2_SAR$Year))]
+OA3_Smolts_Pred <- dat_all$smolts[which(dat_all$Year %in% max(dat_OA3_SAR$Year))]
+
+
+
+  
+  total_run_size_pred <-   best_model_OA2[,c(3,4,5)]*OA2_Smolts_Pred + 
+    best_model_OA3[,c(3,4,5)]*OA3_Smolts_Pred
+
+  total_run_size_pred <- data.frame(Year = best_model_OA2$Year + 2,total_run_size_pred,
+                                    Model = best_model_OA2$Model)
+
+ggplot(data=total_run_size_pred,aes(x=Year,y=Estimate,color=Model))+
+  #geom_ribbon(aes(ymin=L95,ymax=U95,,fill=Model),color=NA,alpha=0.4)+
+  facet_wrap(~Model,ncol=1)+
+  labs(title="Total run size best Model One-Year-Ahead Forecasts")+
+  geom_line(size=1)+
+  scale_color_brewer(palette="Spectral")+
+  geom_point(data=dat_all,mapping=aes(x=Year,y=runsize_obs ),size=2,color="black")+
+  ylim(0,NA)+
+  theme_bw()
+  
+#===========================
+#Best Model final year table
+#===========================
+best_model_OA2%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm=T))%>%
+  dplyr::select(Model,Year,Estimate,L95,U95)%>%
+  kbl(caption = "Table 11. OA2 Survival Best model forecasts one year ahead of final year of data.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+best_model_OA3%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm=T))%>%
+  dplyr::select(Model,Year,Estimate,L95,U95)%>%
+  kbl(caption = "Table 12. OA3 Survival Best model forecasts one year ahead of final year of data.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+
+
+  best_model_OA2[,c(3,4,5)] <- best_model_OA2[,c(3,4,5)]*OA2_Smolts_Pred
+
+  best_model_OA3[,c(3,4,5)] <- best_model_OA3[,c(3,4,5)]*OA3_Smolts_Pred
+
+  
+
+  best_model_OA2%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm=T))%>%
+  mutate(Year = replace(Year,Year == 2020,2022))%>%
+  dplyr::select(Model,Year,Estimate,L95,U95)%>%
+  kbl(caption = "Table 13. OA2 run size best model forecasts one year ahead of final year of data.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+  
+  best_model_OA3%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm=T))%>%
+  mutate(Year = replace(Year,Year == 2019,2022))%>%
+  dplyr::select(Model,Year,Estimate,L95,U95)%>%
+  kbl(caption = "Table 14. OA3 run size best model forecasts one year ahead of final year of data.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+  
+
+```
