@@ -122,6 +122,11 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
   group_by(Year)%>%
   dplyr::summarise(NPGO=mean(NPGO))
 #=========================================================
+#get Salmon Ocean Abundance Data
+#=========================================================
+OceanSalmon<-read_csv("data/pink_covariates_1952-2020.csv")%>%
+  dplyr::rename(Year=year)
+#=========================================================
 #get NOAA indicator data, wrangle into usable format, plot
 #=========================================================
 #indicators<-read_csv("https://media.fisheries.noaa.gov/2021-04/Stoplight%20csv.csv?null",skip=1)%>%
@@ -221,6 +226,7 @@ If we loaded/downloaded covariate data (other than fish abundance) for use in fo
 dat<-dat%>%
   left_join(PIT)%>%
   left_join(NPGO)%>%
+  left_join(OceanSalmon)%>%
   #left_join(indicators)%>%
   #left_join(ssta)%>%
   mutate(
@@ -252,11 +258,14 @@ dat<-dat%>%
     lag1_SAR1 = lag(scale(log(SAR1))),
     lag2_SAR2 = lag(scale(log(SAR1)),2),
     lag1_NPGO = lag(NPGO),
-    lag2_NPGO = lag(NPGO,2)
+    lag2_NPGO = lag(NPGO,2),
+    lag1_TotalPinks = lag(scale(tot_pk_num)),
+    lag2_TotalPinks = lag(scale(tot_pk_num),2),
+    lag0_TotalPinks = log(scale(tot_pk_num))
     )
 
 #select variables to include in analysis and subset data
-vars<-c("lag1_SAR1","lag2_SAR2") #what regression variables will we use?
+vars<-c("lag1_SAR1","lag2_SAR2", "lag1_NPGO","lag2_NPGO","lag1_TotalPinks","lag0_TotalPinks") #what regression variables will we use? 
 dat<-data.frame(dat)%>%
   dplyr::select(Year,runsize_obs,all_of(vars))%>%
   filter(
