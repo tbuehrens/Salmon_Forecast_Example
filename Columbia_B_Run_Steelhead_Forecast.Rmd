@@ -261,7 +261,7 @@ dat<-dat%>%
     lag2_NPGO = lag(NPGO,2),
     lag1_TotalPinks = lag(scale(tot_pk_num)),
     lag2_TotalPinks = lag(scale(tot_pk_num),2),
-    lag0_TotalPinks = log(scale(tot_pk_num))
+    lag0_TotalPinks = scale(tot_pk_num)
     )
 
 #select variables to include in analysis and subset data
