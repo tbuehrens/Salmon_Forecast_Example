@@ -4,8 +4,8 @@ get_flow_data<-function(flow_site,min_year,max_year){
                      "?cb_00060=on",
                      "&format=rdb",
                      "&site_no=",flow_site,
-                     "&begin_date=",min(dat$Year),"-01-01",
-                     "&end_date=",max(dat$Year),"-12-31")
+                     "&begin_date=",min_year,"-01-01",
+                     "&end_date=",max_year,"-12-31")
   flow<-read_table(flow_url,skip=29)%>%
     dplyr::rename(Date=`20d`,CFS=`14n`)%>%
     dplyr::select(Date,CFS)
