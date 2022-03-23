@@ -105,7 +105,8 @@ PIT<-read_csv("data/Columbia_Steelhead_SAR_DART_11_1_2021.csv")%>%
 SAR1<-data.frame(SAR1=gam(cbind(ocean1Count,juvCount-ocean1Count)~s(OutmigrationYear,k=(dim(PIT)[1])),family=binomial,data=PIT)$fitted)
 SAR2<-data.frame(SAR2= c(gam(cbind(ocean2Count,juvCount-ocean2Count)~s(OutmigrationYear,k=(dim(PIT)[1]-1)),family=binomial,data=PIT)$fitted,NA))
 PIT<-PIT%>%
-  bind_cols(SAR1,SAR2)
+  bind_cols(SAR1,SAR2)%>%
+  dplyr::select(!c("Pop"))
 
 
 #=========================================================
@@ -265,7 +266,7 @@ dat<-dat%>%
     )
 
 #select variables to include in analysis and subset data
-vars<-c("lag1_SAR1","lag2_SAR2", "lag1_NPGO","lag2_NPGO","lag1_TotalPinks","lag0_TotalPinks") #what regression variables will we use? 
+vars<-c("lag0_TotalPinks","lag1_NPGO") #what regression variables will we use? "lag1_SAR1","lag2_SAR2", "lag1_NPGO","lag2_NPGO","lag1_TotalPinks",
 dat<-data.frame(dat)%>%
   dplyr::select(Year,runsize_obs,all_of(vars))%>%
   filter(
@@ -273,7 +274,7 @@ dat<-data.frame(dat)%>%
       .cols = all_of(vars),
       .fns = ~ !is.na(.x)
     )
-  )
+  )%>%
 #look at our data  
 print(data.frame(dat))
 ```
