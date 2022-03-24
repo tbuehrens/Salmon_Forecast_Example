@@ -33,15 +33,16 @@ This script fits log-normal Generalized Additive Models and ARIMA models to salm
 
 # Setup
 All analyses require R software [**(link)**](https://cran.r-project.org/) (v3.4.3) for data retrieval, data processing, and summarizing model results. Here we configure R to perform our analysis and generate our outputs
-```{r set_options, echo = TRUE, message = FALSE}
+```{r set_options,echo=TRUE,message=FALSE,include=FALSE}
 options(width = 100)
-knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(message=FALSE)
 set.seed(123)
 ```
 
+
 We also need a couple of helper functions which we will load from the functions folder, which we will load using the walk() function from the purrr package (which we will install if it is not already installed).
 ```{r load_funcs, message = FALSE, warning = FALSE,results = "hide"}
-wd_functions<-"functions"
+wd_functions<-"../functions"
 sapply(FUN = source, paste(wd_functions, list.files(wd_functions), sep="/"))
 ```
 
@@ -127,7 +128,7 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
 #get NOAA indicator data, wrangle into usable format, plot
 #=========================================================
 #indicators<-read_csv("https://media.fisheries.noaa.gov/2021-04/Stoplight%20csv.csv?null",skip=1)%>%
-indicators<-read_csv("data/Stoplight csv.csv",skip=1)%>%
+indicators<-read_csv("../data/Stoplight csv.csv",skip=1)%>%
   filter(!is.na(`Ecosystem Indicators`))%>%
   pivot_longer(names_to = "Year",
                 cols=c(starts_with("1"),starts_with("2")),
