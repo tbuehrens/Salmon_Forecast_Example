@@ -1,5 +1,5 @@
 #fit model function for ARIMA models
-fc <- function(y,Year, h, xreg, order){
+fc <- function(y,Years, h, xreg, order){
   if(!is.null(xreg)){
     if(ncol(xreg)>1){
       X <- xreg[1:length(y),]
@@ -12,7 +12,6 @@ fc <- function(y,Year, h, xreg, order){
       }else(newX <- as.matrix(xreg[length(y)+(1:h),]))
     }else(newX<-xreg[length(y)+(1:h)])
     fit <-Arima(y,order=order, xreg=X,method="ML")
-    
     #results<-forecast(fit, xreg=newX,h=h)$mean[[1]]
     results<-data.frame(forecast(fit, xreg=newX,h=h))%>%
       rename(Estimate = Point.Forecast, L95 = Lo.95, U95 =Hi.95)%>%
@@ -27,7 +26,7 @@ fc <- function(y,Year, h, xreg, order){
       dplyr::select(Estimate,SE,L95,U95)
   }
   results<-results%>%
-    bind_cols(data.frame(Year=Year))%>%
+    bind_cols(data.frame(Year=Years))%>%
     dplyr::select(Year,Estimate,SE,L95,U95)
   
   results<-list(results=results,fit=fit)
