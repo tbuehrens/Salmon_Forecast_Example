@@ -1,5 +1,5 @@
 #function to evaluate forecast skill ()
-evaluate_forecasts<-function(forecasts, observations){
+evaluate_forecasts<-function(forecasts,observations){
   forecast_skill<-forecasts%>%
     left_join(observations,by="Year")%>%
     dplyr::select(Year,Model,Estimate,runsize_obs)%>%

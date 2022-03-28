@@ -4,7 +4,7 @@ evaluate_forecasts_with_ensembles<-function(forecasts,observations){
     unlist()
   
   ensembles<-NULL
-  for(i in 2: length(yrrange[1]:yrrange[2])){
+  for(i in 2:length(yrrange[1]:yrrange[2])){
     years<-c(yrrange[1]:(yrrange[1]+i-1))
     tdat<-forecasts%>%
       filter(Year %in% years)%>%
