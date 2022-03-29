@@ -11,6 +11,8 @@ output:
     toc_float: yes
 params:
   system: "" # system name, or blank when using as input via render()
+editor_options: 
+  chunk_output_type: console
 ---
 
 <script>
@@ -31,37 +33,52 @@ This script fits log-normal Generalized Additive Models and ARIMA models to salm
 
 
 # Setup
-All analyses require R software [**(link)**](https://cran.r-project.org/) (v3.4.3) for data retrieval, data processing, and summarizing model results. Here we configure R to perform our analysis and generate our outputs
+All analyses require R software [**(link)**](https://cran.r-project.org/) (v3.4.3) for data retrieval, data processing, and summarizing model results. 
+Here we configure R to perform our analysis and generate our outputs
 ```{r set_options,echo=TRUE,message=FALSE}
 options(width = 100)
 knitr::opts_chunk$set(message=FALSE)
 set.seed(123)
 ```
 
-We also need a couple of helper functions which we will load from the functions folder, which we will load using the walk() function from the purrr package (which we will install if it is not already installed).
-```{r load_funcs,message=FALSE,warning=FALSE,results="hide"}
-wd_functions<-"../functions"
-sapply(FUN = source, paste(wd_functions, list.files(wd_functions), sep="/"))
-```
-
 Here we will load & install packages we need to use (needs internet connection if packages not already installed)
 ```{r load_packages,message=FALSE,warning=FALSE,results="hide"}
 
-packages_list<-c("tidyverse"
-                 ,"forecast"
-                 ,"mgcv"
-                 ,"ggplot2"
-                 ,"MASS"
-                 ,"RColorBrewer"
-                 ,"kableExtra"
-                 ,"gtools"
-                 ,"lubridate"
-                 ,"brms"
-                 ,"dataRetrieval"
-                 , "ncdf4"
-                 , "reshape2"
-                 )
-install_or_load_pack(pack=packages_list)
+pkgs<-c("tidyverse",
+        "forecast",
+        "mgcv",
+        "ggplot2",
+        "MASS",
+        "RColorBrewer",
+        "kableExtra",
+        "gtools",
+        "lubridate",
+        "brms",
+        "dataRetrieval",
+        "ncdf4",
+        "reshape2",
+        "here",
+        "pracma",
+        "tidymodels",
+        "modeltime",
+        "timetk",
+        "conflicted")
+
+if(length(setdiff(pkgs,rownames(installed.packages())))>0){ install.packages(setdiff(pkgs,rownames(installed.packages())),dependencies=T)}
+invisible(lapply(pkgs,library,character.only=T))
+
+tidymodels_prefer()
+conflict_prefer("lag","dplyr")
+conflict_prefer("rdirichlet","brms")
+
+```
+
+We also need a couple of helper functions which we will load from the functions folder, which we will load using the walk() function from the purrr package (which we will install if it is not already installed).
+```{r load_funcs,message=FALSE,warning=FALSE,results="hide"}
+
+setwd(here("code"))
+wd_functions<-"../functions"
+sapply(FUN = source, paste(wd_functions, list.files(wd_functions), sep="/"))
 
 ```
 
@@ -100,7 +117,7 @@ dat<-read_csv(esc_file,col_types="n")%>%
 
 Yrlist<-data.frame(Year=c(min(dat$Year):(max(dat$Year)+FY)))
 thisYr<-as.numeric(format(Sys.Date(),"%Y"))
-  
+
 dat<-dat%>%
   right_join(Yrlist)
     
@@ -185,7 +202,6 @@ ssta<-sstdat%>%
 
 ```
 
-
 If we loaded/downloaded covariate data (other than fish abundance) for use in forecasting, in this section we will merge it with our fish data to produce a final dataframe. Note the format below; the rest of the functions and sections rely on your data being formatted this way,
 ```{r merge_data,message=FALSE,warning=FALSE,results="hide"}
 
@@ -250,7 +266,7 @@ dat<-data.frame(dat)%>%
 }
 
 #look at our data  
-print(data.frame(dat))
+print(tail(data.frame(dat)))
 
 ```
 # Select covariates
@@ -355,9 +371,43 @@ for(i in 1:norders){
 
 ## continue with top ten ARIMA models
 n_best_models<-10
-AICcs$deltaAICc<-AICcs$AICc-min(AICcs$AICc)
-best_models<-AICcs%>%arrange(desc(-deltaAICc))%>%slice(1:n_best_models)
+AICcs$delong_term_mean_modelAICc<-AICcs$AICc-min(AICcs$AICc)
+best_models<-AICcs%>%arrange(desc(-delong_term_mean_modelAICc))%>%slice(1:n_best_models)
 ARIMAs<-ARIMAs[ARIMAs%in%best_models$Name]
+
+#====================================#
+# Last year observe as predicted value
+#====================================#
+last_year_obs<-list()
+last_year_obs$results<-data.frame(Year=dat$Year,Estimate=c(NA,log(dat$runsize_obs[-yr_ind])))%>%mutate(Estimate=replace(Estimate,which(Year<min(dat$Year)+TY),NA))
+
+#====================#
+# Moving average model
+#====================#
+# simple moving average models up to lag-6
+movavgs<-c(NULL)
+for(i in 2:6){
+  movavg_mod<-list()
+  movavg_mod$results<-data.frame(Year=dat$Year,Estimate=c(NA,movavg(log(dat$runsize_obs[-yr_ind]),n=i,type="s")))%>%mutate(Estimate=replace(Estimate,which(Year<min(dat$Year)+TY),NA))
+  mod_name<-paste0("moving_avg_lag",paste0(as.numeric(i),collapse=""))
+  assign(mod_name,movavg_mod)
+  movavgs[i-1]<-mod_name
+} ## end loop over orders
+
+#===================================#
+# Long-term average as predicted value
+#====================================#
+long_term_mean<-list()
+long_term_mean$results<-data.frame(Year=dat$Year,Estimate=rep(mean(log(dat$runsize_obs[-yr_ind])),dim(dat)[1]))%>%mutate(Estimate=replace(Estimate,which(Year<min(dat$Year)+TY),NA))
+
+#==============================================================#
+# Prophet, prophet boost, random forest, and elastic net models
+#==============================================================#
+
+prophet_model<-fit_prophet(dat,TY,yr_ind) # basic FB prophet model
+random_forest<-fit_rforest(dat,TY,yr_ind) # 1000 trees?
+prophet_boost<-fit_pboost(dat,TY,yr_ind) # takes the longest to fit
+elastic_net<-fit_glmnet(dat,TY,yr_ind) # similar to Bayesian horse shoe prior
 
 #===========#
 # GAM models
@@ -372,7 +422,6 @@ gam<-tsCV2(y=log(dat$runsize_obs[-yr_ind]),
             knots=-1
 )
 
-#kmax<-floor(sum(influence(gam$fit)))-length(covar_used)-1
 # if(FY==1){
 # LFO10<-tsCV2(y=log(dat$runsize_obs[-yr_ind]),
 #             Year=dat$Year,
@@ -418,11 +467,11 @@ Here we will summarize our forecasts for the last year of our covariate data and
 #===================#
 # Summarize Forecasts
 #===================#
-if(incl_brms=="yes"){
-forecasts<-summarize_forecasts(c(ARIMAs,"gam","gp_horseshoe","LFO12"))
-} else {
-forecasts<-summarize_forecasts(c(ARIMAs,"gam")) ##,"LFO10"
-}
+models<-c(ARIMAs,"prophet_model","random_forest","prophet_boost","elastic_net","gam","long_term_mean","last_year_obs",movavgs)
+
+if(incl_brms=="yes"){ models<-c(models,"gp_horseshoe","LFO12") }
+
+forecasts<-summarize_forecasts(models) 
 
 #========================================#
 # Table of forecast results for final year
@@ -451,9 +500,34 @@ forecasts%>%
 
 ```
 
-# Evaluate forecast performance and ensemble models
-Here we will evaluate forecasts using Mean Absolute Percent Error (MAPE), Root Mean Squared Error (RMSE), and Median Symmetric Accuracy (MSA). RMSE and MAPE tend to more heavily penalize over-forecasts relative to under-forecasts for abundance (because errors are right-skewed), whereas MSA is specifically tailored for right tailed distributions. We will also calculated model weights. For the ensembles, we calculate leave-forward-out performance year by year in order to develop weighted ensembles (with recalculated weights each year). Then evaluate performance of these one-year-ahead ensembles and compare with original models.
+# Evaluate forecast performance
+Here we will evaluate forecasts using Mean Absolute Percent Error (MAPE), Root Mean Squared Error (RMSE), and Median Symmetric Accuracy (MSA). RMSE and MAPE tend to more heavily penalize over-forecasts relative to under-forecasts for abundance (because errors are right-skewed), whereas MSA is specifically tailored for right tailed distributions.
+```{r evaluate_forecast_skill,message=FALSE,warning=FALSE,results="show"}
+
+forecast_skills_models<-evaluate_forecasts(forecasts=forecasts%>%
+                    filter(Year>min(Year)),observations=dat)
+
+#===============================
+# Table of model forecast skills
+#===============================
+forecast_skills_models%>%
+  kbl(caption = "Table 3.Forecast Performance based on full set of one-year-ahead forecasts.",digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+  
+```
+
+# Evaluate ensembles
+Here we will calculate model weights. For the ensembles, we calculate leave-forward-out performance year by year in order to develop weighted ensembles (with recalculated weights each year). Then evaluate performance of these one-year-ahead ensembles and compare with original models.
 ```{r evaluate_forecasts,message=FALSE,warning=FALSE,results="show"}
+
+#==============================
+# evaluate forecast performance
+#==============================
+# not models without uncertainty
+forecasts<-forecasts%>%
+  filter(!grepl("long_term_mean",Model))%>%
+  filter(!grepl("last_year_obs",Model))%>%
+  filter(!grepl("moving_avg",Model)) 
 
 forecast_results<-evaluate_all_forecasts(forecasts=forecasts,observations=dat)
 
@@ -461,15 +535,15 @@ forecast_results<-evaluate_all_forecasts(forecasts=forecasts,observations=dat)
 # Table of final year model weights
 #=================================
 forecast_results$final_model_weights%>%
-  dplyr::select(Model, RMSE_weight, MAPE_weight, MSA_weight, Stacking_weight)%>%
-  kbl(caption = "Table 3. Final Year Model Weights based on full dataset of one-year-ahead performance.",digits =3)%>%
+  dplyr::select(Model,RMSE_weight,MAPE_weight,MSA_weight, Stacking_weight)%>%
+  kbl(caption = "Table 4. Final Year Model Weights based on full dataset of one-year-ahead performance.",digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
-#=======================
-#Table of Forecast Skill
-#=======================
+#========================
+# Table of Forecast Skill
+#========================
 forecast_results$forecast_skill%>%
-  kbl(caption = "Table 4.Forecast Performance based on full set of one-year-ahead forecasts.",digits =3)%>%
+  kbl(caption = "Table 5.Forecast Performance based on full set of one-year-ahead forecasts including ensembles.",digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
 #=======================================
@@ -491,6 +565,7 @@ forecast_results$forecast_skill%>%
 #   geom_point(data=dat,mapping=aes(x=Year,y=runsize_obs),size=2,color="black")+
 #   ylim(0,NA)+
 #   theme_bw()
+
 ```
 
 # Best model
@@ -540,7 +615,7 @@ best_model%>%
   group_by(Model)%>%
   filter(Year%in%forecast_years)%>%
   dplyr::select(Model,Year,Estimate,L95,U95)%>%
-  kbl(caption = "Table 5. Best one year ahead model forecasts for the final year.",digits =0)%>%
+  kbl(caption = "Table 6. Best one year ahead model forecasts for the final year.",digits =0)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
 ```

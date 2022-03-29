@@ -57,11 +57,15 @@ evaluate_all_forecasts<-function(forecasts,observations){
            MAPE_weighted = value * MAPE_weight,
            Stack_weighted = value * Stacking_weight,
     )%>%
+    fill(MSA_weighted,
+         RMSE_weighted,
+         MAPE_weighted,
+         Stack_weighted)%>%
     group_by(Year,Parameter)%>%
-    summarise(MSA_weighted = sum(MSA_weighted),
-              RMSE_weighted = sum(RMSE_weighted),
-              MAPE_weighted = sum(MAPE_weighted),
-              Stack_weighted = sum(Stack_weighted),
+    summarise(MSA_weighted = sum(MSA_weighted,na.rm=T),
+              RMSE_weighted = sum(RMSE_weighted,na.rm=T),
+              MAPE_weighted = sum(MAPE_weighted,na.rm=T),
+              Stack_weighted = sum(Stack_weighted,na.rm=T),
     )%>%
     pivot_longer(names_to = "Model",
         cols=c("MSA_weighted","RMSE_weighted","MAPE_weighted","Stack_weighted"),
