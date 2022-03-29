@@ -276,10 +276,16 @@ print(data.frame(dat))
 Here we specify parameters for our forecast training and evaluation: how many years of training data to include in the training set (validation is the rest), how many years forward to forecast (typically 1), and make some selections regarding which metric to use to evaluate forecast odel performance.
 ```{r set_parameters, message = FALSE, warning = FALSE,results = "hide"}
 #set model fitting and evaluation params
-TY <- dim(dat)[1]-12 #training years (years of training data)
+#TY <- dim(dat)[1]-12 #training years (years of training data)
 FY <- 1 #forecast years (years foreward to forecast)
 k = 1 #this is the model-averaging weighting exponent--default is 1, larger numbers will tend to more heavily weight "best" models over lower ranked models
 stack_metric = "MSA" #this is the performance measure that will be optimized to find the best stack weights
+
+DY<-dim(dat)[1] # all years 
+yr_ind<-c((DY-FY+1):DY) # years to forecast
+TY<-DY-12 # training years
+
+
 ```
 
 # Fit Forecast Models
