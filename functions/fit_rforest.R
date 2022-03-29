@@ -24,7 +24,7 @@ fit_rforest<-function(dat,TY,yr_ind){
     add_recipe(recipe_spec %>% step_rm(date))%>%
     fit(training(splits))
   ## model calibration on test data
-  calibration_tbl<-modeltime_table(workflow_fit_glmnet)%>%
+  calibration_tbl<-modeltime_table(workflow_fit_rf)%>%
     modeltime_calibrate(testing(splits))
   ## model forecasting of test data
   forecast_tbl<-calibration_tbl%>%
@@ -43,6 +43,6 @@ fit_rforest<-function(dat,TY,yr_ind){
   ## re-name and supply all years to output
   colnames(results_tbl)<-c("Year","Estimate","L95","U95")
   results<-data.frame(Year=dat$Year)%>%left_join(results_tbl)
-  results<-list(results=results,fit=model_fit_prophet)
+  results<-list(results=results,fit=workflow_fit_rf)
   return(results)
 }

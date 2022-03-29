@@ -10,7 +10,7 @@ output:
     toc_depth: 3
     toc_float: yes
 params:
-  system: "" # system name, or blank when using as input via render()
+  system: "Hoh" # system name, or blank when using as input via render()
 editor_options: 
   chunk_output_type: console
 ---

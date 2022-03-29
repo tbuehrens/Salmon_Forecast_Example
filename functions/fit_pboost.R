@@ -43,6 +43,6 @@ fit_pboost<-function(dat,TY,yr_ind){
   ## re-name and supply all years to output
   colnames(results_tbl)<-c("Year","Estimate","L95","U95")
   results<-data.frame(Year=dat$Year)%>%left_join(results_tbl)
-  results<-list(results=results,fit=model_fit_prophet)
+  results<-list(results=results,fit=workflow_fit_prophet_boost)
   return(results)
 }

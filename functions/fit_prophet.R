@@ -8,7 +8,7 @@ fit_prophet<-function(dat,TY,yr_ind){
   index<-(TY):(yr_ind-1)
   nY<-length(index)
   ## trim future years for splitting and forecasting
-  dat_fit<-data[-yr_ind,]
+  dat_fit<-data[-yr_ind,] 
   splits<-dat_fit%>%time_series_split(initial=TY,assess=nY-1)
   ## model fit on training data
   model_fit_prophet<-prophet_reg(seasonality_yearly=TRUE)%>%
