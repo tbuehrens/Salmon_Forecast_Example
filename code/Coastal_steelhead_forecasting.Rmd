@@ -408,6 +408,7 @@ prophet_model<-fit_prophet(dat,TY,yr_ind) # basic FB prophet model
 random_forest<-fit_rforest(dat,TY,yr_ind) # 1000 trees?
 prophet_boost<-fit_pboost(dat,TY,yr_ind) # takes the longest to fit
 elastic_net<-fit_glmnet(dat,TY,yr_ind) # similar to Bayesian horse shoe prior
+ets_model<-fit_ets(dat,TY,yr_ind) # error-trend-season model using exponential smoothing
 
 #===========#
 # GAM models
@@ -467,7 +468,7 @@ Here we will summarize our forecasts for the last year of our covariate data and
 #===================#
 # Summarize Forecasts
 #===================#
-models<-c(ARIMAs,"prophet_model","random_forest","prophet_boost","elastic_net","gam","long_term_mean","last_year_obs",movavgs)
+models<-c(ARIMAs,"prophet_model","random_forest","prophet_boost","elastic_net", "ets_model","gam","long_term_mean","last_year_obs",movavgs)
 
 if(incl_brms=="yes"){ models<-c(models,"gp_horseshoe","LFO12") }
 
