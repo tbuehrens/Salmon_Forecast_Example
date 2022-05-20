@@ -10,7 +10,7 @@ output:
     toc_depth: 3
     toc_float: yes
 params:
-  system: "Hoh" # system name, or blank when using as input via render()
+  system: "Quinault" # system name, or blank when using as input via render()
 editor_options: 
   chunk_output_type: console
 ---
@@ -29,40 +29,22 @@ Last Updated `r format(Sys.time(), '%m/%d/%Y')`.
 ***
 
 # Overview
-This script fits log-normal Generalized Additive Models and ARIMA models to salmon run-size data with or without regression covariates. These models are then used to generate one-year-ahead forecasts. The data used to fit the models is split into "training" and "validation" sets to evaluate performance of the one-year-ahead forecasts, compare models, and develop weighted "ensemble" forecasts. The code repository used to generate this page and complete analyses can be found here: [**(link)**](https://github.com/tbuehrens/Salmon_Forecast_Example)
+This script fits various time series models to salmon run size data with or without regression covariates. These models are used to generate one-year-ahead forecasts by splitting the data into "training" and "validation" sets to evaluate the ability of each model to make one-year-ahead forecasts. Forecasts for the last few years of the available time series are evaluated and models compared based on their forecasting performance. Furthermore, weighted ensembles of multiple models are developed by evaluating optimal model weights to construct the best possible ensemble, which is then used to generate the final one-year-ahead forecast of future run size. 
+
+The code repository used to generate this page and complete analyses can be found here: [**(link)**](https://github.com/tbuehrens/Salmon_Forecast_Example)
 
 
 # Setup
-All analyses require R software [**(link)**](https://cran.r-project.org/) (v3.4.3) for data retrieval, data processing, and summarizing model results. 
-Here we configure R to perform our analysis and generate our outputs
+All analyses require R software [**(link)**](https://cran.r-project.org/) (v3.4.3) for data retrieval, data processing, and summarizing model results. First, we configure R to perform our analysis and generate our outputs.
 ```{r set_options,echo=TRUE,message=FALSE}
 options(width = 100)
 knitr::opts_chunk$set(message=FALSE)
 set.seed(123)
 ```
-
-Here we will load & install packages we need to use (needs internet connection if packages not already installed)
+Here we will load & install the required packages (needs internet connection if packages have not already been installed).
 ```{r load_packages,message=FALSE,warning=FALSE,results="hide"}
 
-pkgs<-c("tidyverse",
-        "forecast",
-        "mgcv",
-        "ggplot2",
-        "MASS",
-        "RColorBrewer",
-        "kableExtra",
-        "gtools",
-        "lubridate",
-        "brms",
-        "dataRetrieval",
-        "ncdf4",
-        "reshape2",
-        "here",
-        "pracma",
-        "tidymodels",
-        "modeltime",
-        "timetk",
-        "conflicted")
+pkgs<-c("tidyverse","forecast","mgcv","ggplot2","MASS","RColorBrewer","kableExtra","gtools","lubridate","brms","dataRetrieval","ncdf4","reshape2","here","pracma","tidymodels","modeltime","timetk","conflicted","janitor")
 
 if(length(setdiff(pkgs,rownames(installed.packages())))>0){ install.packages(setdiff(pkgs,rownames(installed.packages())),dependencies=T)}
 invisible(lapply(pkgs,library,character.only=T))
@@ -72,8 +54,7 @@ conflict_prefer("lag","dplyr")
 conflict_prefer("rdirichlet","brms")
 
 ```
-
-We also need a couple of helper functions which we will load from the functions folder, which we will load using the walk() function from the purrr package (which we will install if it is not already installed).
+We also need to load helper functions from the functions folder.
 ```{r load_funcs,message=FALSE,warning=FALSE,results="hide"}
 
 setwd(here("code"))
@@ -81,23 +62,18 @@ wd_functions<-"../functions"
 sapply(FUN = source, paste(wd_functions, list.files(wd_functions), sep="/"))
 
 ```
-
 # Set parameters
-Here we specify parameters for our forecasting  and evaluation: how many years of training data to include in the training set (validation is the rest), how many years forward to forecast (typically 1), and make some selections regarding which metric to use to evaluate forecast odel performance.
+Here we specify parameters for our forecasting and evaluation: number of years forward to forecast (only FY=1 currently available), the model-averaging weighting exponent, and the performance metric used to evaluate forecast model performance. Available performance metrics are the	Mean Absolute Percent Error (MAPE), Root Mean Squared Error (RMSE), and Median Symmetric Accuracy (MSA).
 ```{r set_parameters,message=FALSE,warning=FALSE,results="hide"}
-
 FY <- 1 # number of years foreward to forecast (note: if forecasting more than one year,performance is still evaluated based on one-year ahead forecasts)
 k <- 1 # this is the model-averaging weighting exponent--default is 1, larger numbers will tend to more heavily weight "best" models over lower ranked models
 stack_metric <- "MSA" # this is the performance measure that will be optimized to find the best stack weights
 incl_brms<-"no" # include brms models? 'yes' or 'no'
-
 ```
 
-# Load data
-Here we will load and format our data for analysis. First, we will load and format our fish data for analysis. What you load is what you will forecast (so you can forecast run size or escapement). At the beginning of this section we set which system is being forecast (currently available: Chehalis, Hoh, Humptulips, Queets, Quillayute, Quinault, Willapa)
-
+# Load fish data
+Here we will load and format our data for analysis. First, we will load and format our fish data for analysis. We can forecast run size or escapement. At the beginning of this section information on the system to forecast is taken from the input parameters and the respective stream gage is selected. Currently available are Willapa Bay and the Chehalis, Hoh, Humptulips, Queets, Quillayute, and Quinault rivers.
 ```{r load_data,message=FALSE,warning=FALSE,results="show"}
-
 #=========================#
 #get salmon abundance data 
 #=========================#
@@ -109,30 +85,31 @@ system<-params$system
 system_name<-substr(system,1,4)
 esc_file<-paste0("../data/River_Files/",system_name,"_Esc.csv")
 catch_file<-paste0("../data/River_Files/",system_name,"_Catch.csv")
+age_file<-paste0("../data/River_Files/",system_name,"_Age.csv")
 
-dat<-read_csv(esc_file,col_types="n")%>%
+run_dat<-read_csv(esc_file,col_types="n")%>%
   left_join(read_csv(catch_file,col_types="n"))%>%
+  mutate(across(everything(),round))%>%
   mutate(runsize_obs=catch+escapement)%>%
   dplyr::rename(Year=year)
 
-Yrlist<-data.frame(Year=c(min(dat$Year):(max(dat$Year)+FY)))
+Yrlist<-data.frame(Year=c(min(run_dat$Year):(max(run_dat$Year)+FY)))
 thisYr<-as.numeric(format(Sys.Date(),"%Y"))
+prevYr<-thisYr-1
 
-dat<-dat%>%
-  right_join(Yrlist)
+run_dat<-run_dat%>%right_join(Yrlist)
     
 #look at our data  
-print(tail(data.frame(dat)))
-
+print(tail(data.frame(run_dat)))
 ```
 
 ---
 subtitle: "`r system`"
 ---
 
-The section will (optionally) download from the web (or load from the data folder) NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modeled SST data (ERSST_V5), flow data, PIT tag data, or any other covariate data not included with the fish data that could assist in forecasting.
+# Load covariate data
+Here we will download covariate data from the web (or load from the data folder) that could inform the run size forecasts. Covariates used in this script are stream flow during freshwater residence (minimum, mean, maximum annual flow using stream gages), sea surface temperatures during ocean residence (mean summer and winter SST using ERSST_V5), and the North Pacific Gyre Oscillation (NPGO) index during ocean residence. Other covariate data can easily be added in this section. 
 ```{r get_covariate_data,message=FALSE,warning=FALSE,results="hide"}
-
 if(FY==1){
 #=============#
 #get flow data
@@ -143,8 +120,8 @@ flow_site<-gages[which(systems==system_name)]
 ## average daily flow
 flow_raw<-readNWISuv(siteNumbers=flow_site,
                      parameterCd="00060", ## code '00060' for discharge
-                     startDate=paste0(min(dat$Year),"-01-01"),
-                     endDate=paste0(max(dat$Year),"-12-31"))%>%
+                     startDate=paste0(min(run_dat$Year),"-01-01"),
+                     endDate=paste0(max(run_dat$Year),"-12-31"))%>%
   renameNWISColumns()%>%
   mutate(Date=substr(dateTime,1,10))%>% 
   mutate(Year=year(Date),Month=month(Date),Day=day(Date))%>%
@@ -156,7 +133,8 @@ flow_raw<-readNWISuv(siteNumbers=flow_site,
 flow<-flow_raw%>%  
   mutate(Year=ifelse(Month>5,Year+1,Year))%>%
   group_by(Year)%>%
-  dplyr::summarise(CFS_min=min(CFS_day),CFS_mean=mean(CFS_day),CFS_max=max(CFS_day))
+  dplyr::summarise(CFS_min=min(CFS_day),CFS_mean=mean(CFS_day),CFS_max=max(CFS_day))%>%
+  dplyr::mutate(CFS_min=log(CFS_min),CFS_mean=log(CFS_mean),CFS_max=log(CFS_max))
 
 #=============#
 #get NPGO data
@@ -167,8 +145,8 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
   mutate(Year=as.numeric(Year))%>%
   group_by(Year)%>%
   add_tally()%>%
-  filter(!Month>6)%>% #use only spring (Jan-June) NPGO
-  #filter(!n < 12)%>% #use only complete years
+  #filter(!Month>6)%>% #use only spring (Jan-June) NPGO
+  filter(!n<12)%>% #use only complete years
   group_by(Year)%>%
   dplyr::summarise(NPGO=mean(NPGO))
 
@@ -182,16 +160,17 @@ sstdat<-get_ersst_v5_data_V2(years=c(1960,thisYr),data.dir=data.dir ,ncfilename=
 sstdat<-sstdat%>%
   mutate(sstdiff=c(NA,diff(resid)))
 
-# #================#
-# #Plot ERSST data
-# #================#
+## select SST metric (mean, gmean, resid)
 ssta<-sstdat%>%
-  dplyr::select(year,month,resid)%>%
+  dplyr::select(year,month,meanSST)%>%
   mutate(month = paste0("m_",month))%>%
   rename(Year = year)%>%
-  pivot_wider(names_from = month,values_from = resid)
+  pivot_wider(names_from=month,values_from=meanSST) 
 
-## plot time series for each month
+##================#
+##Plot ERSST data
+##================#
+## time series for each month (warmest: July/Aug/Sept and coldest: Jan/Feb/Mar)
 # colors<-c(brewer.pal(name="Spectral",n=8), brewer.pal(name="Dark2",n=8))
 # ggplot(sstdat,aes(x=factor(year),y=meanSST,group=month,color=month))+
 #   scale_color_manual(values=colors)+
@@ -199,62 +178,44 @@ ssta<-sstdat%>%
 #   theme(axis.text.x=element_text(angle=90))
 
 } ## end if(FY==1) statement
-
 ```
-
-If we loaded/downloaded covariate data (other than fish abundance) for use in forecasting, in this section we will merge it with our fish data to produce a final dataframe. Note the format below; the rest of the functions and sections rely on your data being formatted this way,
+If we loaded/downloaded covariate data for use in forecasting fish abundances, here we will merge these data with our fish data. The remainder of the sections and the functions used therein rely on this data format.
 ```{r merge_data,message=FALSE,warning=FALSE,results="hide"}
-
 #================================#
 # Merge salmon and covariate data
 #================================#
 # only use covariates for 1-year-ahead forecasts 
 if(FY==1){ 
-dat<-dat%>%
+dat<-run_dat%>%
   left_join(flow)%>%
   left_join(NPGO)%>%
   left_join(ssta)%>%
   mutate(
     ## large-scale climate index
-    NPGO_lag1=lag(NPGO,1),
-    NPGO_lag2=lag(NPGO,2),
+    NPGO_lag1=scale(lag(NPGO,1)),
+    NPGO_lag2=scale(lag(NPGO,2)),
     ## sea surface temperatures
-    SST_win1_lag1=(lag(scale(m_12),2)+lag(scale(m_01),1)+lag(scale(m_02),1)+lag(scale(m_03),1)+lag(scale(m_04),1))/3,
-    SST_win1_lag2=(lag(scale(m_12),3)+lag(scale(m_01),2)+lag(scale(m_02),2)+lag(scale(m_03),2)+lag(scale(m_04),2))/3,
-    SST_sum1_lag1=(lag(scale(m_07),1)+lag(scale(m_08),1)+lag(scale(m_09),1))/3,
-    SST_sum1_lag2=(lag(scale(m_07),2)+lag(scale(m_08),2)+lag(scale(m_09),2))/3,
-    SST_sum2_lag1=(lag(scale(m_05),1)+lag(scale(m_06),1)+lag(scale(m_07),1)+lag(scale(m_08),1)+lag(scale(m_09),1)+lag(scale(m_10),1)+lag(scale(m_11),1))/3,
-    SST_sum2_lag2=(lag(scale(m_05),2)+lag(scale(m_06),2)+lag(scale(m_07),2)+lag(scale(m_08),2)+lag(scale(m_09),2)+lag(scale(m_10),2)+lag(scale(m_11),2))/3,
+    SST_win_lag1=scale(lag(m_01,1)+lag(m_02,1)+lag(m_03,1)/3),
+    SST_win_lag2=scale(lag(m_01,2)+lag(m_02,2)+lag(m_03,2)/3),
+    SST_sum_lag1=scale(lag(m_07,1)+lag(m_08,1)+lag(m_09,1)/3),
+    SST_sum_lag2=scale(lag(m_07,2)+lag(m_08,2)+lag(m_09,2)/3),
     ## stream flow metrics (cubic feet per second)
-    #CFS_min_lag1=lag(scale(CFS_min),1),
-    CFS_min_lag2=lag(scale(CFS_min),2),
-    CFS_min_lag3=lag(scale(CFS_min),3),
-    #CFS_mean_lag1=lag(scale(CFS_mean),1),
-    CFS_mean_lag2=lag(scale(CFS_mean),2),
-    CFS_mean_lag3=lag(scale(CFS_mean),3),
-    #CFS_max_lag1=lag(scale(CFS_max),1),
-    CFS_max_lag2=lag(scale(CFS_max),2),
-    CFS_max_lag3=lag(scale(CFS_max),3),
+    CFS_min_lag2=scale(lag(CFS_min,2)),
+    CFS_min_lag3=scale(lag(CFS_min,3)),
+    CFS_mean_lag2=scale(lag(CFS_mean,2)),
+    CFS_mean_lag3=scale(lag(CFS_mean,3)),
+    CFS_max_lag2=scale(lag(CFS_max,2)),
+    CFS_max_lag3=scale(lag(CFS_max,3))
     )
 
 ## select covariates (drop same year values which can't be used in forecasts)
 dat<-dplyr::select(dat,-starts_with("m_"),-CFS_max,-CFS_min,-CFS_mean,-NPGO) 
 
 ## variables to include in analysis
-vars<-names(dat[,-c(1:4)]) ## all of the above
+all_vars<-names(dat[,-c(1:4)]) ## all of the above
 
-## filter data
-dat<-data.frame(dat)%>%
-  dplyr::select(Year,runsize_obs,all_of(vars))%>%
-  filter(
-    if_all(
-      .cols = all_of(vars),
-      .fns = ~ !is.na(.x)
-    )
-  )
-
-# all variables to be tested in models
-all_vars<-names(dat[,-c(1:2)]) 
+## select covariates
+dat<-dat%>%dplyr::select(Year,runsize_obs,all_of(all_vars))
 
 # trim run size NAs, except final forecast year
 dat<-data.frame(dat)%>%filter(Year==max(dat$Year) | !is.na(runsize_obs))
@@ -267,23 +228,28 @@ dat<-data.frame(dat)%>%
 
 #look at our data  
 print(tail(data.frame(dat)))
-
 ```
+
 # Select covariates
-Select the best combination of covariates (maximum of three in any one model)
-
+Here we select the best combination of covariates. We allow a maximum of three covariates in any one model, to avoid long run times and to avoid over-fitting of the data.
 ```{r select_covariates,message=FALSE,warning=FALSE,results="show"}
-
-DY<-dim(dat)[1] # all years 
-yr_ind<-c((DY-FY+1):DY) # years to forecast
-TY<-DY-12 # training years
 
 #=================================#
 # Select covariates and make table
 #=================================#
 # metrics: stream flow, SST, NPGO
 if(FY==1){
-covar_used<-select_covariates(all_vars)
+dat_all<-dat
+
+## drop  NAs
+dat<-dat%>%filter(if_all(.cols=all_of(all_vars),.fns=~!is.na(.x))) 
+DY<-dim(dat)[1] # all years 
+yr_ind<-c((DY-FY+1):DY) # years to forecast
+TY<-DY-12 # training years
+
+## covariate selection
+covar_selected<-select_covariates(all_vars,dat)
+covar_used<-covar_selected$covars
 cavar_table<-data.frame(covars=covar_used)%>%
   mutate(Description = case_when(
     startsWith(covars,"CFS_min") ~ "Minimum stream flow",
@@ -300,18 +266,24 @@ cavar_table<-data.frame(covars=covar_used)%>%
     endsWith(covars,"lag2") ~ "2 years prior",
     endsWith(covars,"lag3") ~ "3 years prior"
     ))
+
 ## make covariate table
 cavar_table%>%
   kbl(caption = "Table 1. Covariates included in the models",digits =0)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
 } ## end if(FY==1) statement
-
 ```
 
 # Fit forecast models
-Here we fit ARIMA and GAM forecasts 
+Here we fit the individual time series models, which include ARIMA models, log-normal Generalized Additive Models (GAM), the Prophet model, Prophet boost, an elastic net model using Lasso and Ridge regression penalties, an error-trend-season model with exponential smoothing, and random forests. In addition, we also compare these models to a long-term mean as predicted value and last years observation as predicted value. 
+
 ```{r fit_forecasts,message=FALSE,warning=FALSE,results="show"}
+DY<-dim(dat)[1] # all years 
+yr_ind<-c((DY-FY+1):DY) # years to forecast
+TY<-DY-12 # training years
+
+dat<-dat%>%select(Year,runsize_obs,all_of(covar_used))
 
 #=============#
 # ARIMA models
@@ -328,25 +300,8 @@ arima_orders<-list(
   )
 norders<-length(arima_orders)
 
-# fit models without covariates
 ARIMAs<-c(NULL)
 AICcs<-data.frame(Name=NA,AICc=NA)
-for(i in 1:norders){
-  order<-arima_orders[[i]]
-  ARIMA_mod<-tsCV2(y=log(dat$runsize_obs[-yr_ind]),
-            Year=dat$Year,
-            xreg=NULL,
-            h=FY,
-            min=TY,
-            type="ARIMA",
-            order=order
-            )
-  ARIMA_name<-paste0("ARIMA",paste0(as.numeric(order),collapse=""))
-  AICcs[i,1]<-ARIMA_name
-  assign(ARIMA_name,ARIMA_mod)
-  ARIMAs[i]<-ARIMA_name
-  AICcs[i,2]<-ARIMA_mod$fit$aicc
-} ## end loop over orders
 
 # fit models with covariates
 if(FY==1){
@@ -362,15 +317,37 @@ for(i in 1:norders){
             )
   
   ARIMA_name<-paste0("ARIMA",paste0(as.numeric(order),collapse=""),"_withcov")
-  AICcs[norders+i,1]<-ARIMA_name
+  AICcs[i,1]<-ARIMA_name
   assign(ARIMA_name,ARIMA_withcov)
-  ARIMAs[norders+i]<-ARIMA_name
-  AICcs[norders+i,2]<-ARIMA_withcov$fit$aicc
+  ARIMAs[i]<-ARIMA_name
+  AICcs[i,2]<-ARIMA_withcov$fit$aicc
 } ## end loop over orders
 } ## end if(FY==1) statement
 
+# fit models without covariates
+for(i in 1:norders){
+    order<-arima_orders[[i]]
+    try(ARIMA_mod<-tsCV2(y=log(dat$runsize_obs[-yr_ind]),
+            Year=dat$Year,
+            xreg=NULL,
+            h=FY,
+            min=TY,
+            type="ARIMA",
+            order=order
+            )
+    )
+    if(isTRUE(class(ARIMA_mod)=="try-error")) { next } else { 
+    ARIMA_name<-paste0("ARIMA",paste0(as.numeric(order),collapse=""))
+    AICcs[norders+i,1]<-ARIMA_name
+    assign(ARIMA_name,ARIMA_mod)
+    ARIMAs[norders+i]<-ARIMA_name
+    AICcs[norders+i,2]<-ARIMA_mod$fit$aicc
+    }
+} ## end loop over orders
+
 ## continue with top ten ARIMA models
 n_best_models<-10
+ARIMAs<-compact(ARIMAs)
 AICcs$delong_term_mean_modelAICc<-AICcs$AICc-min(AICcs$AICc)
 best_models<-AICcs%>%arrange(desc(-delong_term_mean_modelAICc))%>%slice(1:n_best_models)
 ARIMAs<-ARIMAs[ARIMAs%in%best_models$Name]
@@ -385,14 +362,14 @@ last_year_obs$results<-data.frame(Year=dat$Year,Estimate=c(NA,log(dat$runsize_ob
 # Moving average model
 #====================#
 # simple moving average models up to lag-6
-movavgs<-c(NULL)
-for(i in 2:6){
-  movavg_mod<-list()
-  movavg_mod$results<-data.frame(Year=dat$Year,Estimate=c(NA,movavg(log(dat$runsize_obs[-yr_ind]),n=i,type="s")))%>%mutate(Estimate=replace(Estimate,which(Year<min(dat$Year)+TY),NA))
-  mod_name<-paste0("moving_avg_lag",paste0(as.numeric(i),collapse=""))
-  assign(mod_name,movavg_mod)
-  movavgs[i-1]<-mod_name
-} ## end loop over orders
+# movavgs<-c(NULL)
+# for(i in 2:6){
+#   movavg_mod<-list()
+#   movavg_mod$results<-data.frame(Year=dat$Year,Estimate=c(NA,movavg(log(dat$runsize_obs[-yr_ind]),n=i,type="s")))%>%mutate(Estimate=replace(Estimate,which(Year<min(dat$Year)+TY),NA))
+#   mod_name<-paste0("moving_avg_lag",paste0(as.numeric(i),collapse=""))
+#   assign(mod_name,movavg_mod)
+#   movavgs[i-1]<-mod_name
+# } ## end loop over orders
 
 #===================================#
 # Long-term average as predicted value
@@ -400,15 +377,15 @@ for(i in 2:6){
 long_term_mean<-list()
 long_term_mean$results<-data.frame(Year=dat$Year,Estimate=rep(mean(log(dat$runsize_obs[-yr_ind])),dim(dat)[1]))%>%mutate(Estimate=replace(Estimate,which(Year<min(dat$Year)+TY),NA))
 
-#==============================================================#
-# Prophet, prophet boost, random forest, and elastic net models
-#==============================================================#
+#===========================================================================#
+# Prophet, prophet boost, random forest, elastic net, and error-trend-season
+#===========================================================================#
 
 prophet_model<-fit_prophet(dat,TY,yr_ind) # basic FB prophet model
 random_forest<-fit_rforest(dat,TY,yr_ind) # 1000 trees?
 prophet_boost<-fit_pboost(dat,TY,yr_ind) # takes the longest to fit
 elastic_net<-fit_glmnet(dat,TY,yr_ind) # similar to Bayesian horse shoe prior
-ets_model<-fit_ets(dat,TY,yr_ind) # error-trend-season model using exponential smoothing
+ets_model<-fit_ets(dat,TY,yr_ind) # error-trend-season / exponential smoothing
 
 #===========#
 # GAM models
@@ -458,17 +435,16 @@ if(incl_brms=="yes"){
     )
   }
 }
-
 ```
 
 # Summarize Forecasts 
-Here we will summarize our forecasts for the last year of our covariate data and we will plot our observed and forecasted runsize for all models
+Here we will summarize our forecasts and plot observed and forecasted runsize for all models.
 ```{r summarize_forecasts,message=FALSE,warning=FALSE,results="asis"}
 
 #===================#
 # Summarize Forecasts
 #===================#
-models<-c(ARIMAs,"prophet_model","random_forest","prophet_boost","elastic_net", "ets_model","gam","long_term_mean","last_year_obs",movavgs)
+models<-c(ARIMAs,"prophet_model","random_forest","prophet_boost","elastic_net", "ets_model","gam","long_term_mean","last_year_obs")#,movavgs)
 
 if(incl_brms=="yes"){ models<-c(models,"gp_horseshoe","LFO12") }
 
@@ -479,32 +455,31 @@ forecasts<-summarize_forecasts(models)
 #========================================#
 forecast_years<-dat$Year[c((DY-FY+1):(DY))]
 
-forecasts%>%
-  group_by(Model)%>%
-  filter(Year%in%forecast_years)%>%
-  #filter(Year==max(Year,na.rm=T))%>%
-  kbl(caption = "Table 2. Forecasts for final year of data.",digits =0)%>%
-  kable_classic(full_width = F, html_font = "Cambria")
+# forecasts%>%
+#   group_by(Model)%>%
+#   filter(Year%in%forecast_years)%>%
+#   #filter(Year==max(Year,na.rm=T))%>%
+#   kbl(caption = "Table 2. Forecasts for final year of data.",digits =0)%>%
+#   kable_classic(full_width = F, html_font = "Cambria")
 
 #===========================#
 # Plot of final year forecast
 #===========================#
-# colors<-brewer.pal(name="Spectral",n=8)
-# colors<-colorRampPalette(colors)(length(unique(forecasts$Model)))
-# ggplot(data=forecasts,aes(x=Year,y=Estimate,color=Model))+
-#   labs(title="One-Year-Ahead Forecasts")+
-#   geom_line(size=1)+
-#   scale_color_manual(values=colors)+
-#   geom_point(data=dat,mapping=aes(x=Year,y=runsize_obs),size=1,color="black")+
-#   ylim(0,NA)+
-#   theme_bw()
+colors<-brewer.pal(name="Spectral",n=8)
+colors<-colorRampPalette(colors)(length(unique(forecasts$Model)))
+ggplot(data=forecasts,aes(x=Year,y=Estimate,color=Model))+
+  labs(title="One-Year-Ahead Forecasts")+
+  geom_line(size=1)+
+  scale_color_manual(values=colors)+
+  geom_point(data=dat,mapping=aes(x=Year,y=runsize_obs),size=1,color="black")+
+  ylim(0,NA)+
+  theme_bw()
 
 ```
 
 # Evaluate forecast performance
-Here we will evaluate forecasts using Mean Absolute Percent Error (MAPE), Root Mean Squared Error (RMSE), and Median Symmetric Accuracy (MSA). RMSE and MAPE tend to more heavily penalize over-forecasts relative to under-forecasts for abundance (because errors are right-skewed), whereas MSA is specifically tailored for right tailed distributions.
+Here we will evaluate forecasts using a few performance metrics: Mean Absolute Percent Error (MAPE), Root Mean Squared Error (RMSE), and Median Symmetric Accuracy (MSA). RMSE and MAPE tend to more heavily penalize over-forecasts relative to under-forecasts for abundance (because errors are right-skewed), whereas MSA is specifically tailored for right tailed distributions.
 ```{r evaluate_forecast_skill,message=FALSE,warning=FALSE,results="show"}
-
 forecast_skills_models<-evaluate_forecasts(forecasts=forecasts%>%
                     filter(Year>min(Year)),observations=dat)
 
@@ -514,11 +489,10 @@ forecast_skills_models<-evaluate_forecasts(forecasts=forecasts%>%
 forecast_skills_models%>%
   kbl(caption = "Table 3.Forecast Performance based on full set of one-year-ahead forecasts.",digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
-  
 ```
 
 # Evaluate ensembles
-Here we will calculate model weights. For the ensembles, we calculate leave-forward-out performance year by year in order to develop weighted ensembles (with recalculated weights each year). Then evaluate performance of these one-year-ahead ensembles and compare with original models.
+Here we will calculate model weights. For the ensembles, we calculate leave-forward-out performance year by year in order to develop weighted ensembles (with recalculated weights each year). We then evaluate performance of these one-year-ahead ensembles and compare it with the performance of the original models.
 ```{r evaluate_forecasts,message=FALSE,warning=FALSE,results="show"}
 
 #==============================
@@ -570,7 +544,7 @@ forecast_results$forecast_skill%>%
 ```
 
 # Best model
-Identify the best model and plot and summarize its results
+Finally, we identify the best model and plot and summarize its results.
 ```{r get_best_model,message=FALSE,warning=FALSE,results="show"}
 
 best_model <- get_best_model(
@@ -594,8 +568,14 @@ ggplot(data=best_model,aes(x=Year,y=Estimate,color=Model))+
   ylim(0,NA)+
   theme_bw()
 
-best_mu<-log(best_model%>%filter(Year==max(Year))%>%dplyr::select(Estimate))%>%unlist()
-best_sd<-best_model%>%filter(Year==max(Year))%>%dplyr::select(sd)%>%unlist()
+best_mu<-log(best_model%>%
+               filter(Year==max(Year))%>%
+               dplyr::select(Estimate))%>%unlist()
+
+best_sd<-best_model%>%
+  filter(Year==max(Year))%>%
+  dplyr::select(sd)%>%unlist()
+
 best_draws=data.frame(Estimate=rlnorm(25000,mean=best_mu,sd=best_sd[1]))
 
 #==========================
@@ -618,5 +598,4 @@ best_model%>%
   dplyr::select(Model,Year,Estimate,L95,U95)%>%
   kbl(caption = "Table 6. Best one year ahead model forecasts for the final year.",digits =0)%>%
   kable_classic(full_width = F, html_font = "Cambria")
-
 ```
