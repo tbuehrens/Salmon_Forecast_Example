@@ -10,7 +10,7 @@ output:
     toc_depth: 3
     toc_float: yes
 params:
-  system: "Quinault" # system name, or blank when using as input via render()
+  system: "Quinault" # system name, or blank
 editor_options: 
   chunk_output_type: console
 ---
@@ -51,6 +51,7 @@ invisible(lapply(pkgs,library,character.only=T))
 
 tidymodels_prefer()
 conflict_prefer("lag","dplyr")
+conflict_prefer("select","dplyr")
 conflict_prefer("rdirichlet","brms")
 
 ```
@@ -79,19 +80,24 @@ Here we will load and format our data for analysis. First, we will load and form
 #=========================#
 systems<-c("Cheh","Hoh","Hump","Quee","Quil","Quin","Will")
 gages<-c(12031000,12041200,12039500,12040500,12043000,12039500,12013500)
-## currently using stream gage on Quinault River for nearby Humptulips River
+## using stream gage on Quinault River for nearby Humptulips River
+
+data_dir<-"C:/Users/ohlj1477/OneDrive - Washington State Executive Branch Agencies/Population Projection Model/River_Files"
 
 system<-params$system
 system_name<-substr(system,1,4)
-esc_file<-paste0("../data/River_Files/",system_name,"_Esc.csv")
-catch_file<-paste0("../data/River_Files/",system_name,"_Catch.csv")
-age_file<-paste0("../data/River_Files/",system_name,"_Age.csv")
+
+esc_file<-paste0(data_dir,"/",system_name,"_Esc.csv")
+catch_file<-paste0(data_dir,"/",system_name,"_Catch.csv")
 
 run_dat<-read_csv(esc_file,col_types="n")%>%
   left_join(read_csv(catch_file,col_types="n"))%>%
+  rowwise()%>% 
+  mutate(catch=sum(c_across(-c(year,escapement)),na.rm=T)) %>%
   mutate(across(everything(),round))%>%
   mutate(runsize_obs=catch+escapement)%>%
-  dplyr::rename(Year=year)
+  rename(Year=year)%>%
+  dplyr::select(Year,escapement,catch,runsize_obs)
 
 Yrlist<-data.frame(Year=c(min(run_dat$Year):(max(run_dat$Year)+FY)))
 thisYr<-as.numeric(format(Sys.Date(),"%Y"))
@@ -190,6 +196,7 @@ dat<-run_dat%>%
   left_join(flow)%>%
   left_join(NPGO)%>%
   left_join(ssta)%>%
+  data.frame()%>%
   mutate(
     ## large-scale climate index
     NPGO_lag1=scale(lag(NPGO,1)),
@@ -206,7 +213,8 @@ dat<-run_dat%>%
     CFS_mean_lag3=scale(lag(CFS_mean,3)),
     CFS_max_lag2=scale(lag(CFS_max,2)),
     CFS_max_lag3=scale(lag(CFS_max,3))
-    )
+    ) %>%
+  data.frame() 
 
 ## select covariates (drop same year values which can't be used in forecasts)
 dat<-dplyr::select(dat,-starts_with("m_"),-CFS_max,-CFS_min,-CFS_mean,-NPGO) 
@@ -283,7 +291,7 @@ DY<-dim(dat)[1] # all years
 yr_ind<-c((DY-FY+1):DY) # years to forecast
 TY<-DY-12 # training years
 
-dat<-dat%>%select(Year,runsize_obs,all_of(covar_used))
+dat<-dat%>%dplyr::select(Year,runsize_obs,all_of(covar_used))
 
 #=============#
 # ARIMA models
@@ -598,4 +606,12 @@ best_model%>%
   dplyr::select(Model,Year,Estimate,L95,U95)%>%
   kbl(caption = "Table 6. Best one year ahead model forecasts for the final year.",digits =0)%>%
   kable_classic(full_width = F, html_font = "Cambria")
+
+best_forecast<-best_model%>%
+  group_by(Model)%>%
+  filter(Year%in%forecast_years)%>%
+  dplyr::select(Model,Year,Estimate,L95,U95)
+
+write.csv(best_forecast,paste0("../output/Forecast-",system,".csv"))
+
 ```
