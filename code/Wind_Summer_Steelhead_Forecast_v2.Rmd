@@ -278,7 +278,7 @@ dat<-dat%>%
     )
 
 #select variables to include in analysis and subset data
-vars<-c("log_BONlatewinters","log_lag1_SAR1","log_lag1_SAR2") #"lag2_NPGO","diff_log_BONlatewinters" #what regression variables will we use?
+vars<-c("log_BONlatewinters","log_lag1_SAR1","log_lag1_SAR2","lag1_NPGO","lag2_NPGO","diff_log_BONlatewinters") #"lag2_NPGO","diff_log_BONlatewinters" #what regression variables will we use?
 dat<-data.frame(dat)%>%
   dplyr::select(Year,runsize_obs,all_of(vars))%>%
   filter(
