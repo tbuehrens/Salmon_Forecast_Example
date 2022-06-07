@@ -1,4 +1,4 @@
-select_covariates<-function(all_vars){
+select_covariates<-function(all_vars,dat){
   ## test individual covariates using auto.arima()
   AICcs<-data.frame(variable=all_vars,AICc=NA,Order=NA)
   for(i in 1:length(all_vars)){
@@ -39,6 +39,7 @@ select_covariates<-function(all_vars){
   ## return the best combination of predictors
   index<-which(AICc_tab==min(AICc_tab))
   covars_used<-as.character(unlist(covars[index])) 
-  # results<-list(covars=covars_used)
-  return(covars_used)
+  AICc_tab<-data.frame(cbind(covars,AICc_tab))
+  results<-list(covars=covars_used,AICc_combos=AICc_tab,AICc_single=AICcs)
+  return(results)
 }

@@ -27,12 +27,19 @@ fc2 <- function(y, Years, h, xreg, knots, m){
     newdat<-data.frame(c((length(y)+1):(length(y)+h))) # for multiple years
     colnames(newdat)<-c("year")
   }
-  results<-data.frame(predict(fit,newdata=newdat,type="link",se.fit=T))%>%
-    mutate(L95 = fit - 1.96 * se.fit, U95 = fit + 1.96 * se.fit)%>%
-    rename(Estimate=fit,SE=se.fit)%>%
+  # results<-data.frame(predict(fit,newdata=newdat,type="link",se.fit=T)) %>%
+  #   mutate(L95 = fit - 1.96 * se.fit, U95 = fit + 1.96 * se.fit)%>%
+  #   rename(Estimate=fit,SE=se.fit)%>%
+  #   bind_cols(data.frame(Year=Years))%>%
+  #   dplyr::select(Year,Estimate,SE,L95,U95)
+
+  results<-data.frame(predict(fit,newdat,type="link",se.fit=T)) %>%
+    cbind(log(data.frame(gam_pred_ints(fit,newdat,c(0.025,0.975))))) %>%
+    data.frame() %>%
+    rename(Estimate=fit,SE=se.fit,L95=X0.025,U95=X0.975) %>%
     bind_cols(data.frame(Year=Years))%>%
     dplyr::select(Year,Estimate,SE,L95,U95)
-  
+
   results<-list(results=results,fit=fit)
   return(results)
 }
