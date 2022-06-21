@@ -5,18 +5,17 @@ evaluate_forecasts_with_ensembles<-function(forecasts,observations){
   
   ensembles<-NULL
   for(i in 2: length(yrrange[1]:yrrange[2])){
-    years<-c(yrrange[1]:(yrrange[1]+i-1))
+    Years<-c(yrrange[1]:(yrrange[1]+i-1))
     tdat<-forecasts%>%
-      filter(Year %in% years)%>%
+      filter(Year %in% Years)%>%
       left_join(observations,by="Year")%>%
       dplyr::select(Year,Model,Estimate,runsize_obs)%>%
       mutate(error=runsize_obs-Estimate)%>%
       filter(!is.na(error))%>%
       group_by(Model)%>%
       summarise(RMSE = sqrt(mean(error^2)),
-                MAPE = mean(abs(error/runsize_obs))*100,
-                MSA = 100*(exp(mean(abs(log(runsize_obs/Estimate))))-1)
-      )%>%
+                MAPE = mean(abs(error/runsize_obs)*100,na.rm = TRUE),
+                MSA = 100*(exp(median(abs(log(Estimate/runsize_obs)),na.rm = T))-1))%>%
       arrange(MSA)%>%
       mutate(MSA_weight=(1/MSA)^k/sum((1/MSA)^k), 
              RMSE_weight =(1/RMSE)^k/sum((1/RMSE)^k),
@@ -24,9 +23,9 @@ evaluate_forecasts_with_ensembles<-function(forecasts,observations){
       )
     
     modelcnt<-length(unique(forecasts$Model))
-    stackyears<-years[years!=max(years)]
+    stackYears<-Years[Years!=max(Years)]
     stackdat<-forecasts%>%
-      filter(Year %in% years)%>%
+      filter(Year %in% Years)%>%
       pivot_wider(names_from = Model, values_from = Estimate,id_cols = Year)%>%
       left_join(observations%>%dplyr::select(Year,runsize_obs))
     
@@ -49,7 +48,7 @@ evaluate_forecasts_with_ensembles<-function(forecasts,observations){
       left_join(stacking_weights)
     
     tdat2<-forecasts%>%
-      filter(Year == max(years))%>%
+      filter(Year == max(Years))%>%
       pivot_longer(names_to = "Parameter",
                    cols=c("Estimate","L95","U95"),
                    values_to = "value")%>%

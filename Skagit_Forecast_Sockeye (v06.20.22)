@@ -1,5 +1,5 @@
 ---
-title: Marblemount Spring Chinook Forecast
+title: Skagit Sockeye Forecast
 author: Casey Ruff, modified original code from Thomas Buehrens 
 output:
   html_document:
@@ -81,21 +81,29 @@ Here we will load and format our data for analysis. First, we will load and form
 #get Skagit Sockeye data as example
 #====================================
 
-dat <- read_csv(file.path(datadir, "marblemount_spring_ck_run_size.csv"))
+dat <- read_csv(file.path(datadir, "baker_sockeye_SAR.csv"))
 
 Yrlist<-data.frame(Year=c(min(dat$Year):(max(dat$Year) + 1)))
 
 
-dat<-dat%>%
-  right_join(Yrlist)
+SAR<-dat%>%
+  right_join(Yrlist)%>%
+  filter(Year<2021)
+
+SAR<-SAR%>%bind_cols(SAR1=data.frame(SAR1=gam(cbind(round(OA1_Recruits),smolts-round(OA1_Recruits))~s(Year,k=(dim(SAR)[1]),m=1,bs="ps"),family=quasibinomial,data=SAR)$fitted))%>%
+  bind_cols(SAR2=data.frame(SAR2=c(NA,gam(cbind(round(OA2_Recruits),smolts-round(OA2_Recruits))~s(Year,k=(dim(SAR)[1]-1),m=1,bs="ps"),family=quasibinomial,data=SAR)$fitted)))%>%
+  mutate(year=Year+2,lag1_log_SAR1 = lag(log(SAR1),1),lag1_log_SAR2=log(SAR2))%>%
+  dplyr::select(year=year,lag1_log_SAR1,lag1_log_SAR2)
     
 #look at our data  
-print(tail(data.frame(dat)))
+print(tail(data.frame(SAR)))
 
-dat_age <- read_csv(file.path(datadir, "marblemount_spring_ck_run_age_comp.csv"))
-
-dat_pct_marked <- read_csv(file.path(datadir, "marblemount_ck_hatchery_releases.csv"))
-
+#=========================================================
+#get smolts
+#=========================================================
+Smolts<-read_csv(here("data","baker_sockeye_SAR.csv"))%>%
+  dplyr::mutate(year=Year+2,lag2_log_smolts=log(smolts))%>%
+  dplyr::select(year,lag2_log_smolts)
 ```
 
 The section will (optionally) download from the web (or load from the data folder) NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modeled SST data (ERSST_V5), flow data, PIT tag data, or any other covariate data not included with the fish data that could assist in forecasting.
@@ -109,12 +117,12 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
   mutate(Year=as.numeric(Year))%>%
   group_by(Year)%>%
   add_tally()%>%
-  filter(!Month>6)%>% #use only spring (Jan-June) NPGO
-  #filter(!n < 12)%>% #use only complete years
+  #filter(!Month>6)%>% #use only spring (Jan-June) NPGO
+  filter(!n < 12)%>% #use only complete years
   group_by(Year)%>%
-  dplyr::summarise(NPGO=mean(NPGO))
-
- #NPGO <- NPGO[which(NPGO$Year %in% Yrlist$Year),]
+  dplyr::summarise(NPGO=mean(NPGO))%>%
+  mutate(Year=Year+1, lag1_NPGO = NPGO,lag2_NPGO = lag(NPGO))%>%
+  dplyr::select(year=Year,lag1_NPGO,lag2_NPGO)
 
 #=========================================================
 #get NOAA indicator data, wrangle into usable format, plot
@@ -213,42 +221,49 @@ indicators<-read_csv("data/Stoplight csv.csv",skip=1)%>%
 
 If we loaded/downloaded covariate data (other than fish abundance) for use in forecasting, in this section we will merge it with our fish data to produce a final dataframe. Note the format below; the rest of the functions and sections rely on your data being formatted this way,
 ```{r merge_covariate_data, message = FALSE, warning = FALSE,results = "show"}
-dat<-dat%>%
-  #left_join(PIT)%>%
-  left_join(NPGO)%>%
-  left_join(indicators)%>%
-  #left_join(ssta)%>%
-  mutate(
-    # l1aprssta= lag(scale(m_04)),
-    # l1mayssta= lag(scale(m_05)),
-    # l1junssta= lag(scale(m_06)),
-    # l1julssta= lag(scale(m_07)),
-    # l1augssta= lag(scale(m_08)),
-    # l1sepssta= lag(scale(m_09)),
-    # l1octssta= lag(scale(m_10)),
-    # l1novssta= lag(scale(m_11)),
-    # l1decssta= lag(scale(m_12)),
-    # l1FallSST= (lag(scale(m_10)) + lag(scale(m_11)) + lag(scale(m_12)))/3
-    # PC1 = lag(mod$x[,1]),
-    # PC2 = lag(mod$x[,2]),
-    # PC3 = lag(mod$x[,3]),
-    # lag1_summerPDO = lag(scale(`PDO\n(Sum May-Sept)`)),
-    # lag1_springONI = lag(scale(`ONI\n(Average Jan-June)`)),
-    # lag1_summerdeepSST = lag(scale(`Deep temperature\n(°C; May-Sept)`)),
-    # lag1_summerdeepSalinity = lag(scale(`Deep salinity\n(May-Sept)`)),
-    # lag1_copepodrich = lag(scale(`Deep salinity\n(May-Sept)`)),
-    # lag1_icthy = lag(scale(`Nearshore Ichthyoplankton\nLog(mg C 1,000 m-3; Jan-Mar)`)),
-    # lag1_cpueCO = lag(scale(log(`Steelhead salmon juvenile\ncatches (no. km-1; June)`))),
-    # lag1_phystrans = lag (scale(`Physical Spring Trans.\nUI based (day of year)`)),
-    # lag1_Ncope = lag(scale(`N. copepod biomass anom.\n(mg C m-3; May-Sept)`)),
-    # lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
-    lag3_NPGO = lag(NPGO,3),
-    )
+
+SAR <- SAR%>%
+  left_join(Smolts)%>%
+  left_join(NPGO)
+# dat<-dat%>%
+#   #left_join(PIT)%>%
+#   left_join(NPGO)%>%
+#   #left_join(indicators)%>%
+#   #left_join(ssta)%>%
+#   mutate(
+#     # l1aprssta= lag(scale(m_04)),
+#     # l1mayssta= lag(scale(m_05)),
+#     # l1junssta= lag(scale(m_06)),
+#     # l1julssta= lag(scale(m_07)),
+#     # l1augssta= lag(scale(m_08)),
+#     # l1sepssta= lag(scale(m_09)),
+#     # l1octssta= lag(scale(m_10)),
+#     # l1novssta= lag(scale(m_11)),
+#     # l1decssta= lag(scale(m_12)),
+#     # l1FallSST= (lag(scale(m_10)) + lag(scale(m_11)) + lag(scale(m_12)))/3
+#     # PC1 = lag(mod$x[,1]),
+#     # PC2 = lag(mod$x[,2]),
+#     # PC3 = lag(mod$x[,3]),
+#     # lag1_summerPDO = lag(scale(`PDO\n(Sum May-Sept)`)),
+#     # lag1_springONI = lag(scale(`ONI\n(Average Jan-June)`)),
+#     # lag1_summerdeepSST = lag(scale(`Deep temperature\n(°C; May-Sept)`)),
+#     # lag1_summerdeepSalinity = lag(scale(`Deep salinity\n(May-Sept)`)),
+#     # lag1_copepodrich = lag(scale(`Deep salinity\n(May-Sept)`)),
+#     # lag1_icthy = lag(scale(`Nearshore Ichthyoplankton\nLog(mg C 1,000 m-3; Jan-Mar)`)),
+#     # lag1_cpueCO = lag(scale(log(`Steelhead salmon juvenile\ncatches (no. km-1; June)`))),
+#     # lag1_phystrans = lag (scale(`Physical Spring Trans.\nUI based (day of year)`)),
+#     # lag1_Ncope = lag(scale(`N. copepod biomass anom.\n(mg C m-3; May-Sept)`)),
+#     # lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
+#     lag2_NPGO = lag(NPGO,2),
+#     #lag3_NPGO = lag(NPGO,3),
+#     lag2_smolts = log(lag(smolts,2)),
+#     #lag3_smolts = lag(smolts,3)
+#     )
 
 
 
 #select variables to include in analysis and subset data
-vars<-c("lag3_NPGO") #what regression variables will we use?
+vars<-c("lag2_NPGO","lag3_NPGO","lag2_smolts","lag3_smolts")#,"lag2_PC1","lag2_PC2","lag1_NPGO") #what regression variables will we use?
 dat<-data.frame(dat)%>%
   dplyr::select(Year,runsize_obs,all_of(vars))%>%
   filter(
@@ -258,6 +273,14 @@ dat<-data.frame(dat)%>%
     )
   )
 
+sockeye_cov <- data.frame(dat[,c(1,5:6)])
+ pcdat<-sockeye_cov%>%
+   ungroup()%>%
+   column_to_rownames(var="Year")
+ mod<-prcomp(pcdat
+             )
+dat <- data.frame(dat,PC1_smolts = mod$x[,1],PC2_smolts = mod$x[,2])
+ 
 #look at our data  
 print(data.frame(dat))
 ```
@@ -286,31 +309,88 @@ ARIMA100<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             type="ARIMA",
             order=c(1,0,0)
 )
-ARIMA100_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+ARIMA100_withcov_NPGO_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag3_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag2_NPGO","lag3_NPGO","lag2_smolts","lag3_smolts")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
             order=c(1,0,0)
       )
 
-ARIMA111_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+ARIMA100_withcov_NPGO<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag3_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag2_NPGO","lag3_NPGO")%>%as.matrix(),
+            h=FY,
+            min=TY,
+            type="ARIMA",
+            order=c(1,0,0)
+      )
+
+ARIMA100_withcov_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=dat%>%dplyr::select("lag2_smolts","lag3_smolts")%>%as.matrix(),
+            h=FY,
+            min=TY,
+            type="ARIMA",
+            order=c(1,0,0)
+      )
+
+ARIMA111_withcov_NPGO_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=dat%>%dplyr::select("lag2_NPGO","lag3_NPGO","lag2_smolts","lag3_smolts")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
             order=c(1,1,1)
 )
-ARIMA010_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+
+ARIMA111_withcov_NPGO<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag3_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag2_NPGO","lag3_NPGO")%>%as.matrix(),
+            h=FY,
+            min=TY,
+            type="ARIMA",
+            order=c(1,1,1)
+)
+
+
+ARIMA111_withcov_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=dat%>%dplyr::select("lag2_smolts","lag3_smolts")%>%as.matrix(),
+            h=FY,
+            min=TY,
+            type="ARIMA",
+            order=c(1,1,1)
+)
+
+ARIMA010_withcov_NPGO_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=dat%>%dplyr::select("lag2_NPGO","lag3_NPGO","lag2_smolts","lag3_smolts")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
             order=c(0,1,0)
 )
+
+ARIMA010_withcov_NPGO<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=dat%>%dplyr::select("lag2_NPGO","lag3_NPGO")%>%as.matrix(),
+            h=FY,
+            min=TY,
+            type="ARIMA",
+            order=c(0,1,0)
+)
+
+ARIMA010_withcov_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=dat%>%dplyr::select("lag2_smolts","lag3_smolts")%>%as.matrix(),
+            h=FY,
+            min=TY,
+            type="ARIMA",
+            order=c(0,1,0)
+)
+
 ARIMA010<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=NULL,
@@ -327,14 +407,34 @@ ARIMA010<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 #             type="ARIMA",
 #             order=c(1,1,1)
 # )
-ARIMA101_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+ARIMA101_withcov_NPGO_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag3_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag2_NPGO","lag3_NPGO","lag2_smolts","lag3_smolts")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
             order=c(1,0,1)
 )
+
+ARIMA101_withcov_NPGO<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=dat%>%dplyr::select("lag2_NPGO","lag3_NPGO")%>%as.matrix(),
+            h=FY,
+            min=TY,
+            type="ARIMA",
+            order=c(1,0,1)
+)
+
+ARIMA101_withcov_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=dat%>%dplyr::select("lag2_smolts","lag3_smolts")%>%as.matrix(),
+            h=FY,
+            min=TY,
+            type="ARIMA",
+            order=c(1,0,1)
+)
+
+
 ARIMA101<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=NULL,
@@ -343,14 +443,33 @@ ARIMA101<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             type="ARIMA",
             order=c(1,0,1)
 )
-ARIMA001_withcov<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+ARIMA001_withcov_NPGO_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag3_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag2_NPGO","lag3_NPGO","lag2_smolts","lag3_smolts")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
             order=c(0,0,1)
 )
+
+ARIMA001_withcov_NPGO<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=dat%>%dplyr::select("lag2_NPGO","lag3_NPGO")%>%as.matrix(),
+            h=FY,
+            min=TY,
+            type="ARIMA",
+            order=c(0,0,1)
+)
+
+ARIMA001_withcov_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
+            Year=dat$Year,
+            xreg=dat%>%dplyr::select("lag2_smolts","lag3_smolts")%>%as.matrix(),
+            h=FY,
+            min=TY,
+            type="ARIMA",
+            order=c(0,0,1)
+)
+
 ARIMA001<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=NULL,
@@ -401,7 +520,6 @@ gam<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 # )
 ```
 
-
 # Summarize Forecasts 
 Here we will summarize our forecasts for the last year of our covariate data and we will plot our observed and forecasted runsize for all models
 ```{r summarize_forecasts, message = FALSE, warning = FALSE, results = "asis", include=TRUE}
@@ -409,15 +527,25 @@ Here we will summarize our forecasts for the last year of our covariate data and
 #Summarize Forecasts
 #===================
 forecasts<-summarize_forecasts(
-   c("ARIMA100"
-    ,"ARIMA100_withcov"
-    ,"ARIMA111_withcov"
-    ,"ARIMA010_withcov"
+   c("ARIMA100",
+    "ARIMA100_withcov_NPGO_smolts",
+    "ARIMA100_withcov_NPGO",
+    "ARIMA100_withcov_smolts",
+    "ARIMA111_withcov_NPGO_smolts",
+    "ARIMA111_withcov_NPGO",
+    "ARIMA111_withcov_smolts",
+    "ARIMA010_withcov_NPGO_smolts",
+    "ARIMA010_withcov_NPGO",
+    "ARIMA010_withcov_smolts"
     ,"ARIMA010"
     #,"ARIMA111"
-    ,"ARIMA101_withcov"
+    ,"ARIMA101_withcov_NPGO_smolts",
+    "ARIMA101_withcov_NPGO",
+    "ARIMA101_withcov_smolts"
     ,"ARIMA101"
-    ,"ARIMA001_withcov"
+    ,"ARIMA001_withcov_NPGO_smolts",
+    "ARIMA001_withcov_NPGO",
+    "ARIMA001_withcov_smolts"
     ,"ARIMA001"
     ,"gam"
     # LFO10
@@ -446,7 +574,7 @@ forecasts[which(forecasts$Model %in% forecast_skill$Model[1:10]),]
 #===========================
 #Plot of final year forecast
 #===========================
-ggplot(data=forecasts,aes(x=Year,y=Estimate,color=Model))+
+ggplot(data=forecasts[which(forecasts$Model %in% forecast_skill$Model[1:11]),],aes(x=Year,y=Estimate,color=Model))+
   labs(title="One-Year-Ahead Forecasts")+
   geom_line(size=1)+
   scale_color_brewer(palette="Spectral")+
@@ -526,6 +654,8 @@ best_mu<-log(best_model%>%filter(Year==max(Year))%>%dplyr::select(Estimate))%>%u
 best_sd<-best_model%>%filter(Year==max(Year))%>%dplyr::select(sd)%>%unlist()
 best_draws=data.frame(Estimate=rlnorm(25000,mean=best_mu,sd=best_sd[1]))
 
+sockeye_forecast <- write.csv(best_draws,"sockeyeforecast.csv")
+
 #=========================
 #Best model final year pdf
 #=========================
@@ -547,54 +677,4 @@ best_model%>%
   kbl(caption = "Table 5. Best model forecasts one year ahead of final year of data.",digits =0)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
-#mean forecast
-mu <- best_model%>%
-  group_by(Model)%>%
-  filter(Year==max(Year,na.rm=T))%>%
-  dplyr::select(Estimate)
-
-## compute last 5 year average age comp
-
-age <- apply(dat_age[(dim(dat_age)[1]-5):dim(dat_age)[1],-1],2,FUN = mean)
-forecast <- as.matrix(age) %*% as.matrix(mu[,2])
-
-#pct_marked_by_age
-#sub-yearling
-forecast_sub_yearling <- forecast[1:6,]
-
-forecast_sub_yearling <- cbind(age = c(2,3,4,5,6,7),trs = forecast_sub_yearling)
-
-by.temp <- max(Yrlist,na.rm=T) - c(2,3,4,5,6,7)
-
-pct_marked_sub_yearling <- dat_pct_marked%>%
-  filter(stock == "springHatchery" & fwAge == 0 & year %in% by.temp)%>%
-  dplyr::arrange(desc(year))%>%
-  dplyr::select(percentMarked)
-  
-forecast_sub_yearling <- cbind(forecast_sub_yearling,pct_marked_sub_yearling)
-
-forecast_sub_yearling%>%
-  group_by(age)%>%
-  kbl(caption = "Table 6. sub-yearling hatchery spring chinook forecast percent marked by age.",digits =2)%>%
-  kable_classic(full_width = F, html_font = "Cambria")
-
-##
-
-forecast_yearling <- forecast[8:9,]
-
-forecast_yearling <- cbind(age = c(3,4),trs = forecast_yearling)
-
-by.temp <- max(Yrlist,na.rm=T) - c(3,4)
-
-pct_marked_yearling <- dat_pct_marked%>%
-  filter(stock == "springHatchery" & fwAge == 1 & year %in% by.temp)%>%
-  dplyr::arrange(desc(year))%>%
-  dplyr::select(percentMarked)
-  
-forecast_yearling <- cbind(forecast_yearling,pct_marked_yearling)
-
-forecast_yearling%>%
-  group_by(age)%>%
-  kbl(caption = "Table 7. yearling hatchery spring chinook forecast percent marked by age.",digits =2)%>%
-  kable_classic(full_width = F, html_font = "Cambria")
 ```

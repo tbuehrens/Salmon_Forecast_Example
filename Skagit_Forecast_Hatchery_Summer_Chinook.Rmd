@@ -91,6 +91,11 @@ dat<-dat%>%
     
 #look at our data  
 print(tail(data.frame(dat)))
+
+dat_age <- read_csv(file.path(datadir, "marblemount_summer_ck_run_age_comp.csv"))
+
+dat_pct_marked <- read_csv(file.path(datadir, "marblemount_ck_hatchery_releases.csv"))
+
 ```
 
 The section will (optionally) download from the web (or load from the data folder) NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modeled SST data (ERSST_V5), flow data, PIT tag data, or any other covariate data not included with the fish data that could assist in forecasting.
@@ -541,5 +546,39 @@ best_model%>%
   dplyr::select(Model,Year,Estimate,L95,U95)%>%
   kbl(caption = "Table 5. Best model forecasts one year ahead of final year of data.",digits =0)%>%
   kable_classic(full_width = F, html_font = "Cambria")
+
+#mean forecast
+mu <- best_model%>%
+  group_by(Model)%>%
+  filter(Year==max(Year,na.rm=T))%>%
+  dplyr::select(Estimate)
+
+## compute last 5 year average age comp
+
+age <- apply(dat_age[(dim(dat_age)[1]-5):dim(dat_age)[1],-1],2,FUN = mean)
+forecast <- as.matrix(age) %*% as.matrix(mu[,2])
+
+
+
+forecast_sub_yearling <- forecast[1:4,]
+
+forecast_sub_yearling <- cbind(age = c(2,3,4,5),trs = forecast_sub_yearling)
+
+by.temp <- max(Yrlist,na.rm=T) - c(2,3,4,5)
+
+pct_marked_sub_yearling <- dat_pct_marked%>%
+  filter(stock == "summerIndicator" & fwAge == 0 & year %in% by.temp)%>%
+  dplyr::arrange(desc(year))%>%
+  dplyr::select(percentMarked)
+  
+forecast_sub_yearling <- cbind(forecast_sub_yearling,pct_marked_sub_yearling)
+
+forecast_sub_yearling%>%
+  group_by(age)%>%
+  kbl(caption = "Table 6. sub-yearling hatchery summer chinook forecast percent marked by age.",digits =2)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+
+
 
 ```

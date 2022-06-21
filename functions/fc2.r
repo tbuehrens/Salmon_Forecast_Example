@@ -12,17 +12,17 @@ fc2 <- function(y, Year, h, xreg, knots, m){
       }else(newX <- as.matrix(xreg[length(y)+(1:h),]))
     }else(newX<-xreg[length(y)+(1:h)])
     dat<-data.frame(y,X,c(1:length(y)))
-    colnames(dat)<-c("y",colnames(xreg),"year")
-    formula = as.formula(paste0("exp(y) ~ s(year, m=",m,", bs='ps',","k =",knots,") +",paste(colnames(xreg),collapse = "+")))
+    colnames(dat)<-c("y",colnames(xreg),"Year")
+    formula = as.formula(paste0("exp(y) ~ s(Year, m=",m,", bs='ps',","k =",knots,") +",paste(colnames(xreg),collapse = "+")))
     fit<-gam(formula=formula,data=dat,family="nb",link=log)
     newdat<-data.frame(newX,c(length(y)+1))
-    colnames(newdat)<-c(colnames(xreg),"year")
+    colnames(newdat)<-c(colnames(xreg),"Year")
   }else{
     dat<-data.frame(y,c(1:length(y)))
-    colnames(dat)<-c("y","year")
-    fit<-gam(exp(y) ~ s(year, m=1, k=round(length(y)-2)),data=dat,family="nb",link=log)
+    colnames(dat)<-c("y","Year")
+    fit<-gam(exp(y) ~ s(Year, m=1, k=round(length(y)-2)),data=dat,family="nb",link=log)
     newdat<-data.frame((length(y)+1))
-    colnames(newdat)<-c("year")
+    colnames(newdat)<-c("Year")
   }
   results<-data.frame(predict(fit, newdata = newdat,type="link",se.fit=T))%>%
     mutate(L95 = fit - 1.96 * se.fit, U95 = fit + 1.96 * se.fit)%>%

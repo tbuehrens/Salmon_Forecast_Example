@@ -12,12 +12,12 @@ find_stack_weights<-function(tau,metric,n,initial_weights,preds,obs){
     SE <- Error^2
     PE <- Error/obs
     APE <- abs(PE)
-    LAR <- log(obs/pred_trs_ensemble)
+    LAR <- log(pred_trs_ensemble/obs)
     
     RMSE <- apply(SE,2,function(x){sqrt(mean(x))})
     MPE <- apply(PE,2,function(x){mean(x)})
     MAPE <- apply(APE,2,function(x){mean(x)})
-    MSA <- apply(LAR,2,function(x){100*(exp(mean(abs(x)))-1)})
+    MSA <- apply(LAR,2,function(x){100*(exp(median(abs(x),na.rm = TRUE))-1)})
     
     if(i==1){
       skill=get(metric)

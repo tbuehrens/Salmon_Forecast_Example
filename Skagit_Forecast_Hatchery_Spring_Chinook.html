@@ -1827,7 +1827,7 @@ div.tocify {
 <!--    }); -->
 <!-- </script> -->
 <hr />
-<p>Last Updated 02/17/2022.</p>
+<p>Last Updated 02/22/2022.</p>
 <hr />
 <div id="overview" class="section level1">
 <h1>Overview</h1>
@@ -1893,6 +1893,9 @@ print(tail(data.frame(dat)))</code></pre>
 ## 25 2020        2631
 ## 26 2021        3918
 ## 27 2022          NA</code></pre>
+<pre class="r"><code>dat_age &lt;- read_csv(file.path(datadir, &quot;marblemount_spring_ck_run_age_comp.csv&quot;))
+
+dat_pct_marked &lt;- read_csv(file.path(datadir, &quot;marblemount_ck_hatchery_releases.csv&quot;))</code></pre>
 <p>The section will (optionally) download from the web (or load from the data folder) NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modeled SST data (ERSST_V5), flow data, PIT tag data, or any other covariate data not included with the fish data that could assist in forecasting.</p>
 <pre class="r"><code>#=========================================================
 #get NPGO data
@@ -3274,6 +3277,183 @@ Stack_weighted
 </td>
 <td style="text-align:right;">
 7913
+</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code>#mean forecast
+mu &lt;- best_model%&gt;%
+  group_by(Model)%&gt;%
+  filter(Year==max(Year,na.rm=T))%&gt;%
+  dplyr::select(Estimate)
+
+## compute last 5 year average age comp
+
+age &lt;- apply(dat_age[(dim(dat_age)[1]-5):dim(dat_age)[1],-1],2,FUN = mean)
+forecast &lt;- as.matrix(age) %*% as.matrix(mu[,2])
+
+#pct_marked_by_age
+#sub-yearling
+forecast_sub_yearling &lt;- forecast[1:6,]
+
+forecast_sub_yearling &lt;- cbind(age = c(2,3,4,5,6,7),trs = forecast_sub_yearling)
+
+by.temp &lt;- max(Yrlist,na.rm=T) - c(2,3,4,5,6,7)
+
+pct_marked_sub_yearling &lt;- dat_pct_marked%&gt;%
+  filter(stock == &quot;springHatchery&quot; &amp; fwAge == 0 &amp; year %in% by.temp)%&gt;%
+  dplyr::arrange(desc(year))%&gt;%
+  dplyr::select(percentMarked)
+  
+forecast_sub_yearling &lt;- cbind(forecast_sub_yearling,pct_marked_sub_yearling)
+
+forecast_sub_yearling%&gt;%
+  group_by(age)%&gt;%
+  kbl(caption = &quot;Table 6. sub-yearling hatchery spring chinook forecast percent marked by age.&quot;,digits =2)%&gt;%
+  kable_classic(full_width = F, html_font = &quot;Cambria&quot;)</code></pre>
+<table class=" lightable-classic" style="font-family: Cambria; width: auto !important; margin-left: auto; margin-right: auto;">
+<caption>
+Table 6. sub-yearling hatchery spring chinook forecast percent marked by age.
+</caption>
+<thead>
+<tr>
+<th style="text-align:right;">
+age
+</th>
+<th style="text-align:right;">
+trs
+</th>
+<th style="text-align:right;">
+percentMarked
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+75.64
+</td>
+<td style="text-align:right;">
+0.72
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+1400.00
+</td>
+<td style="text-align:right;">
+0.75
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+4
+</td>
+<td style="text-align:right;">
+2441.72
+</td>
+<td style="text-align:right;">
+0.69
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+5
+</td>
+<td style="text-align:right;">
+185.10
+</td>
+<td style="text-align:right;">
+0.65
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+6
+</td>
+<td style="text-align:right;">
+7.61
+</td>
+<td style="text-align:right;">
+0.65
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+7
+</td>
+<td style="text-align:right;">
+0.00
+</td>
+<td style="text-align:right;">
+0.68
+</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code>##
+
+forecast_yearling &lt;- forecast[8:9,]
+
+forecast_yearling &lt;- cbind(age = c(3,4),trs = forecast_yearling)
+
+by.temp &lt;- max(Yrlist,na.rm=T) - c(3,4)
+
+pct_marked_yearling &lt;- dat_pct_marked%&gt;%
+  filter(stock == &quot;springHatchery&quot; &amp; fwAge == 1 &amp; year %in% by.temp)%&gt;%
+  dplyr::arrange(desc(year))%&gt;%
+  dplyr::select(percentMarked)
+  
+forecast_yearling &lt;- cbind(forecast_yearling,pct_marked_yearling)
+
+forecast_yearling%&gt;%
+  group_by(age)%&gt;%
+  kbl(caption = &quot;Table 7. yearling hatchery spring chinook forecast percent marked by age.&quot;,digits =2)%&gt;%
+  kable_classic(full_width = F, html_font = &quot;Cambria&quot;)</code></pre>
+<table class=" lightable-classic" style="font-family: Cambria; width: auto !important; margin-left: auto; margin-right: auto;">
+<caption>
+Table 7. yearling hatchery spring chinook forecast percent marked by age.
+</caption>
+<thead>
+<tr>
+<th style="text-align:right;">
+age
+</th>
+<th style="text-align:right;">
+trs
+</th>
+<th style="text-align:right;">
+percentMarked
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+7.44
+</td>
+<td style="text-align:right;">
+0.77
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+4
+</td>
+<td style="text-align:right;">
+14.08
+</td>
+<td style="text-align:right;">
+0.76
 </td>
 </tr>
 </tbody>
