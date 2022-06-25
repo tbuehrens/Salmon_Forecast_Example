@@ -228,7 +228,7 @@ dat <- dat%>%
   left_join(SAR)%>%
   left_join(Smolts)%>%
   left_join(NPGO)%>%
-  dplyr::select(Year=Year,runsize_obs,lag1_log_SAR1,lag2_NPGO,lag2_log_smolts)
+  dplyr::select(Year=Year,runsize_obs,lag1_log_SAR2,lag2_NPGO,lag2_log_smolts)
 
 # dat<-dat%>%
 #   #left_join(PIT)%>%
@@ -268,7 +268,7 @@ dat <- dat%>%
 
 
 #select variables to include in analysis and subset data
-vars<-c("lag1_log_SAR1","lag2_log_smolts","lag2_NPGO") #what regression variables will we use?
+vars<-c("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO") #what regression variables will we use?
 dat<-data.frame(dat)%>%
   dplyr::select(Year,runsize_obs,all_of(vars))%>%
   filter(
@@ -315,7 +315,7 @@ ARIMA100<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 )
 ARIMA100_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR1","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -342,7 +342,7 @@ ARIMA100_withcov_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA100_withcov_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR1")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -351,7 +351,7 @@ ARIMA100_withcov_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA111_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR1","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -380,7 +380,7 @@ ARIMA111_withcov_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA111_withcov_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR1")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -389,7 +389,7 @@ ARIMA111_withcov_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA010_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR1","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -416,7 +416,7 @@ ARIMA010_withcov_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA010_withcov_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR1")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -441,7 +441,7 @@ ARIMA010<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 # )
 ARIMA101_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR1","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -468,7 +468,7 @@ ARIMA101_withcov_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA101_withcov_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR1")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -487,7 +487,7 @@ ARIMA101<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 )
 ARIMA001_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR1","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -514,7 +514,7 @@ ARIMA001_withcov_smolts<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA001_withcov_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR1")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
