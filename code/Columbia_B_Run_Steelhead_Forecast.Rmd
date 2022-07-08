@@ -97,17 +97,15 @@ The section will (optionally) download from the web (or load from the data folde
 # #=========================================================
 # #get PIT tag survival/age data
 #=========================================================
-PIT<-read_csv("../data/Columbia_Steelhead_SAR_DART_11_1_2021.csv")%>%
+PIT<-read_csv("https://raw.githubusercontent.com/tbuehrens/Salmon_Forecast_Example/main/data/Columbia_Steelhead_SAR_DART_11_1_2021.csv")%>%
   dplyr::rename(OutmigrationYear=year)%>%
-  mutate(Year=OutmigrationYear+1)%>%
+  mutate(Year=OutmigrationYear+2)%>%
   filter(Pop=="SNA")
 
-SAR1<-data.frame(SAR1=gam(cbind(ocean1Count,juvCount-ocean1Count)~s(OutmigrationYear,k=(dim(PIT)[1])),family=binomial,data=PIT)$fitted)
-SAR2<-data.frame(SAR2= c(gam(cbind(ocean2Count,juvCount-ocean2Count)~s(OutmigrationYear,k=(dim(PIT)[1]-1)),family=binomial,data=PIT)$fitted,NA))
-PIT<-PIT%>%
-  bind_cols(SAR1,SAR2)%>%
-  dplyr::select(!c("Pop"))
-
+PIT<-PIT%>%bind_cols(data.frame(SAR1=gam(cbind(ocean1Count,juvCount-ocean1Count)~s(OutmigrationYear,k=(dim(PIT)[1])),family=binomial,data=PIT)$fitted))%>%
+  bind_cols(data.frame(SAR2=c(gam(cbind(ocean2Count,juvCount-ocean2Count)~s(OutmigrationYear,k=(dim(PIT)[1]-1)),family=binomial,data=PIT)$fitted,NA)))%>%
+  mutate(lag1_log_SAR1 = log(SAR1),lag1_log_SAR2=lag(log(SAR2),1))%>%
+  dplyr::select(Year,lag1_log_SAR1,lag1_log_SAR2)
 
 #=========================================================
 #get NPGO data
@@ -256,17 +254,16 @@ dat<-dat%>%
     # lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
     #lag1_PC1 = scale(lag(`Principal Component scores (PC1)`)),
     # lag1_PC2 = lag(`Principal Component scores (PC2)`),
-    lag1_SAR1 = lag(scale(log(SAR1))),
-    lag2_SAR2 = lag(scale(log(SAR1)),2),
     lag1_NPGO = lag(NPGO),
     lag2_NPGO = lag(NPGO,2),
     lag1_TotalPinks = lag(scale(tot_pk_num)),
     lag2_TotalPinks = lag(scale(tot_pk_num),2),
-    lag0_TotalPinks = scale(tot_pk_num)
+    lag0_TotalPinks = scale(tot_pk_num),
+    pink_ind = ifelse(Year>1999 & Year%%2==0,0,1)
     )
 
 #select variables to include in analysis and subset data
-vars<-c("lag1_SAR1","lag2_SAR2") #what regression variables will we use? 
+vars<-c("lag1_log_SAR1","lag1_log_SAR2","pink_ind","lag2_NPGO") #what regression variables will we use? 
 dat<-data.frame(dat)%>%
   dplyr::select(Year,runsize_obs,all_of(vars))%>%
   filter(
