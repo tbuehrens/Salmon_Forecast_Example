@@ -1,4 +1,4 @@
-evaluate_all_forecasts<-function(forecasts,observations){
+evaluate_all_forecasts<-function(forecasts,observations,stack_metric){
   yrrange<-forecasts%>%summarise(minyr=min(Year),maxyr=max(Year))%>%unlist()
   years<-c(yrrange[1]:yrrange[2])
   
@@ -11,9 +11,9 @@ evaluate_all_forecasts<-function(forecasts,observations){
     group_by(Model)%>%
     summarise(RMSE = sqrt(mean(error^2)),
               MAPE = mean(abs(error/runsize_obs))*100,
-              MSA = 100*(exp(mean(abs(log(runsize_obs/Estimate))))-1)
+              MSA = 100*(exp(median(abs(log(runsize_obs/Estimate))))-1)
     )%>%
-    arrange(MSA)%>%
+    arrange(get(stack_metric))%>%
     mutate(MSA_weight=(1/MSA)^k/sum((1/MSA)^k), 
            RMSE_weight =(1/RMSE)^k/sum((1/RMSE)^k),
            MAPE_weight =(1/MAPE)^k/sum((1/MAPE)^k)
@@ -72,7 +72,7 @@ evaluate_all_forecasts<-function(forecasts,observations){
         values_to = "value")%>%
     pivot_wider(id_cols = c("Year","Model"),names_from=Parameter,values_from=value)
   
-  forecast_skill<-evaluate_forecasts(forecasts=bind_rows(forecasts,ensembles)%>%filter(Year>min(yrrange)),observations=observations)
+  forecast_skill<-evaluate_forecasts(forecasts=bind_rows(forecasts,ensembles)%>%filter(Year>min(yrrange)),observations=observations, stack_metric = stack_metric)
   
   results<-list(
     final_model_weights = tdat,

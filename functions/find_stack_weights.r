@@ -18,7 +18,7 @@ find_stack_weights<-function(tau,metric,n,initial_weights,preds,obs){
     RMSE <- apply(SE,2,function(x){sqrt(mean(x))})
     MPE <- apply(PE,2,function(x){mean(x)})
     MAPE <- apply(APE,2,function(x){mean(x)})
-    MSA <- apply(LAR,2,function(x){100*(exp(mean(abs(x)))-1)})
+    MSA <- apply(LAR,2,function(x){100*(exp(median(abs(x)))-1)})
     # if(i==1){
     if(cnt==0){
       skill=get(metric)
