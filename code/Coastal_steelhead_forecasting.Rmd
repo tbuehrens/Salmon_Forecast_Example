@@ -10,7 +10,7 @@ output:
     toc_depth: 3
     toc_float: yes
 params:
-  system: "Quinault" # system name, or blank
+  system: "" # system name, or blank
 editor_options: 
   chunk_output_type: console
 ---
@@ -44,7 +44,7 @@ set.seed(123)
 Here we will load & install the required packages (needs internet connection if packages have not already been installed).
 ```{r load_packages,message=FALSE,warning=FALSE,results="hide"}
 
-pkgs<-c("tidyverse","forecast","mgcv","ggplot2","MASS","RColorBrewer","kableExtra","gtools","lubridate","brms","dataRetrieval","ncdf4","reshape2","here","pracma","tidymodels","modeltime","timetk","conflicted","janitor")
+pkgs<-c("tidyverse","forecast","mgcv","ggplot2","MASS","RColorBrewer","kableExtra","gtools","lubridate","brms","dataRetrieval","ncdf4","reshape2","here","pracma","tidymodels","modeltime","timetk","conflicted","janitor","readr")
 
 if(length(setdiff(pkgs,rownames(installed.packages())))>0){ install.packages(setdiff(pkgs,rownames(installed.packages())),dependencies=T)}
 invisible(lapply(pkgs,library,character.only=T))
@@ -82,28 +82,29 @@ systems<-c("Cheh","Hoh","Hump","Quee","Quil","Quin","Will")
 gages<-c(12031000,12041200,12039500,12040500,12043000,12039500,12013500)
 ## using stream gage on Quinault River for nearby Humptulips River
 
-data_dir<-"C:/Users/ohlj1477/OneDrive - Washington State Executive Branch Agencies/Population Projection Model/River_Files"
-
 system<-params$system
 system_name<-substr(system,1,4)
 
-esc_file<-paste0(data_dir,"/",system_name,"_Esc.csv")
-catch_file<-paste0(data_dir,"/",system_name,"_Catch.csv")
+# data_dir<-"C:/Users/ohlj1477/OneDrive - Washington State Executive Branch Agencies/Population Projection Model/River_Files"
+# esc_file<-paste0(data_dir,"/",system_name,"_Esc.csv")
+# catch_file<-paste0(data_dir,"/",system_name,"_Catch.csv")
+# run_dat<-read_csv(esc_file,col_types="n")%>%
+#   left_join(read_csv(catch_file,col_types="n"))%>%
+#   rowwise()%>% 
+#   mutate(catch=sum(c_across(-c(year,escapement)),na.rm=T)) %>%
+#   mutate(across(everything(),round))%>%
+#   mutate(runsize_obs=catch+escapement)%>%
+#   rename(Year=year)%>%
+#   dplyr::select(Year,escapement,catch,runsize_obs)
 
-run_dat<-read_csv(esc_file,col_types="n")%>%
-  left_join(read_csv(catch_file,col_types="n"))%>%
-  rowwise()%>% 
-  mutate(catch=sum(c_across(-c(year,escapement)),na.rm=T)) %>%
-  mutate(across(everything(),round))%>%
-  mutate(runsize_obs=catch+escapement)%>%
-  rename(Year=year)%>%
-  dplyr::select(Year,escapement,catch,runsize_obs)
+run_dat<-read_csv("../data/steelhead_run_sizes.csv",col_types="n") %>%
+  dplyr::select(Year,all_of(system)) %>%
+    rename(runsize_obs=system)
 
 Yrlist<-data.frame(Year=c(min(run_dat$Year):(max(run_dat$Year)+FY)))
 thisYr<-as.numeric(format(Sys.Date(),"%Y"))
-prevYr<-thisYr-1
 
-run_dat<-run_dat%>%right_join(Yrlist)
+run_dat<-run_dat %>% right_join(Yrlist)
     
 #look at our data  
 print(tail(data.frame(run_dat)))
@@ -287,11 +288,13 @@ cavar_table%>%
 Here we fit the individual time series models, which include ARIMA models, log-normal Generalized Additive Models (GAM), the Prophet model, Prophet boost, an elastic net model using Lasso and Ridge regression penalties, an error-trend-season model with exponential smoothing, and random forests. In addition, we also compare these models to a long-term mean as predicted value and last years observation as predicted value. 
 
 ```{r fit_forecasts,message=FALSE,warning=FALSE,results="show"}
+
+dat<-dat_all%>%dplyr::select(Year,runsize_obs,all_of(covar_used))
+dat<-dat%>%filter(if_all(.cols=all_of(covar_used),.fns=~!is.na(.x))) 
+
 DY<-dim(dat)[1] # all years 
 yr_ind<-c((DY-FY+1):DY) # years to forecast
 TY<-DY-12 # training years
-
-dat<-dat%>%dplyr::select(Year,runsize_obs,all_of(covar_used))
 
 #=============#
 # ARIMA models
@@ -300,6 +303,7 @@ dat<-dat%>%dplyr::select(Year,runsize_obs,all_of(covar_used))
 # orders tested: up to 3rd order AR, 2nd order MA, and 1st order differencing
 # include ARIMA(0,0,0) to test whether time series are a white noise process
 
+# or define ARIMA orders to be tested and run all combinations
 arima_orders<-list(
   c(0,0,0),c(1,0,0),c(0,1,0),c(0,0,1),c(1,1,0),c(1,0,1),c(0,1,1),c(1,1,1),
   c(2,0,0),c(2,0,1),c(2,0,2),c(2,1,0),c(2,1,1),c(2,1,2),
@@ -584,7 +588,31 @@ best_sd<-best_model%>%
   filter(Year==max(Year))%>%
   dplyr::select(sd)%>%unlist()
 
-best_draws=data.frame(Estimate=rlnorm(25000,mean=best_mu,sd=best_sd[1]))
+best_draws=data.frame(Estimate=rlnorm(25000,best_mu,best_sd[1]))
+
+## save plot for report
+pdf(paste0("../output/Best-model-",system,".pdf"),width=5,height=4)
+par(mar=c(3,3,2,1),mgp=c(2,0.5,0),tck=-0.02,cex.axis=0.8,cex.lab=1)
+tab<-best_model %>% dplyr::select(Year,Estimate,L95,U95)
+xlim<-c(min(dat_all$Year),max(dat_all$Year))
+ylim<-c(0,1.3*max(c(dat_all$runsize_obs,tab$U95),na.rm=TRUE))
+plot(NA,NA,xlim=xlim,ylim=ylim,xlab="Year",ylab="Run size",pch=16,cex=1.2)
+col<-"firebrick"
+polyx<-c(tab$Year,rev(tab$Year))
+polyy<-c(tab$L95,rev(tab$U95))
+polygon(polyx,polyy,lwd=0.5,col=alpha(col,0.5),border=NA)
+lines(tab$Year,tab$Estimate,lwd=2,col=alpha(col,1))
+points(dat_all$Year,dat_all$runsize_obs,pch=16,cex=1,col="black")
+txt<-paste0("Run forecast: ",system)
+mtext(txt,side=3,line=0.5,cex=1,font=1,adj=0)
+l<-c("Historical run size","1-year-ahead forecasts\n(median and 95% CI)")
+legend("topright",legend=l,pch=NA,col=c(NA,alpha(col,0.5)),lwd=c(NA,8),cex=0.8,seg.len=1.5, bty="n")
+legend("topright",legend=l,pch=c(16,NA),col=c("black",col),lwd=c(NA,2),cex=0.8,seg.len=1.5, bty="n")
+dev.off()
+
+write.csv(tab,paste0("../output/Best-model-",system,".csv"))
+
+write.csv(dat_all,paste0("../output/Data-observed-",system,".csv"))
 
 #==========================
 # Best model final year pdf
@@ -612,6 +640,6 @@ best_forecast<-best_model%>%
   filter(Year%in%forecast_years)%>%
   dplyr::select(Model,Year,Estimate,L95,U95)
 
-write.csv(best_forecast,paste0("../output/Forecast-",system,".csv"))
+write.csv(best_forecast,paste0("../output/",system,"_forecast.csv"))
 
 ```
