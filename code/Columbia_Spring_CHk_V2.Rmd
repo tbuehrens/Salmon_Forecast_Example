@@ -272,7 +272,7 @@ dat2<-dat%>%
     # lag1_phystrans = lag (scale(`Physical Spring Trans.\nUI based (day of year)`)),
     # lag1_Ncope = lag(scale(`N. copepod biomass anom.\n(mg C m-3; May-Sept)`)),
     # lag1_summerSST=lag(scale(`Upper 20 m T\n(°C; May-Sept)`)),
-    lag1_JCK = lag(c(scale(log(`Jack Chinook`)))),
+    lag1_log_JCK = lag(c(scale(log(`Jack Chinook`)))),
     # lag1_PC1 = lag(scale(`Principal Component scores (PC1)`)),
     # lag1_PC2 = lag(scale(`Principal Component scores (PC2)`)),
     lag2_PC1 = lag(scale(`Principal Component scores (PC1)`),2),
@@ -303,17 +303,18 @@ dat3<-data.frame(dat2)%>%
     )
   )#%>%filter(Year>1999)
 #look at our data  
-# print(data.frame(dat))
+print(tail(dat3))
 ```
 
 # Set Parameters
 Here we specify parameters for our forecast training and evaluation: how many years of training data to include in the training set (validation is the rest), how many years forward to forecast (typically 1), and make some selections regarding which metric to use to evaluate forecast model performance.
 ```{r set_parameters, message = FALSE, warning = FALSE,results = "hide"}
 #set model fitting and evaluation params
-TY <- dim(dat)[1]-14 #training years (years of training data)
-FY <- 1 #forecast years (years foreward to forecast)
+TY <- 15 #training years (years of training data)
+#FY <- 1 #forecast years (years foreward to forecast)
 k = 1 #this is the model-averaging weighting exponent--default is 1, larger numbers will tend to more heavily weight "best" models over lower ranked models
 stack_metric = "MAPE" #this is the performance measure that will be optimized to find the best stack weights
+num_models<-10
 ```
 
 # Fit Forecast Models
@@ -332,8 +333,8 @@ best_covariates<-all_subsets(series=dat3,covariates=vars2,min=0,max=4)
 
 
 results<-inseason_forecast_v2(dat,
-                  leave_yrs=15,
-                  covariates=best_covariates[[1]][best_covariates[[2]]$model_num[1:10]],
+                  leave_yrs=TY,
+                  covariates=best_covariates[[1]][best_covariates[[2]]$model_num[1:num_models]],
                   # first_forecast_period = first_forecast_period,
                   # plot_results = plot_results,
                   write_model_summaries = T,
@@ -342,10 +343,10 @@ results<-inseason_forecast_v2(dat,
                  
                   # p1_covariates_only=NULL,
                   seasonal=FALSE,
-                  stack_metric = "MAPE"
+                  stack_metric = stack_metric
                   )
 
-model_list<-lapply(best_covariates[[1]][best_covariates[[2]]$model_num[1:10]],function(x) paste(x,collapse = " + "))%>%
+model_list<-lapply(best_covariates[[1]][best_covariates[[2]]$model_num[1:num_models]],function(x) paste(x,collapse = " + "))%>%
   unlist()%>%
   as_tibble()%>%
   add_rownames()%>%
