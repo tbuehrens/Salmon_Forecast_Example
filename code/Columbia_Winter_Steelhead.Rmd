@@ -1,0 +1,368 @@
+---
+title: Columbia R. Winter Steelhead
+author: 
+output:
+  html_document:
+    code_folding: hide
+    fig_caption: yes
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+<script>
+   $(document).ready(function() {
+     $head = $('#header');
+     $head.prepend('<img src=\"https://privatelands.wdfw.wa.gov/wdfwlogo_clrnotxt.png"\" style=\"float: right;width: 150px;\"/>')
+   });
+</script>
+
+***
+
+Last Updated `r format(Sys.time(), '%m/%d/%Y')`.
+
+***
+
+# Setup
+All analyses require R software [**(link)**](https://cran.r-project.org/) (v3.4.3) for data retrieval, data processing, and summarizing model results. Here we configure R to perform our analysis and generate our outputs
+```{r set_options, echo = TRUE, message = FALSE}
+options(width = 100)
+knitr::opts_chunk$set(message = FALSE)
+set.seed(123)
+```
+
+We also need a couple of helper functions which we will load from the functions folder, which we will load using the walk() function from the purrr package (which we will install if it is not already installed).
+```{r load_funcs, message = FALSE, warning = FALSE,results = "hide"}
+wd_functions<-"../functions"
+sapply(FUN = source, paste(wd_functions, list.files(wd_functions), sep="/"))
+```
+
+Here we will load & install packages we need to use (needs internet connection if packages not already installed)
+```{r load_packages, message = FALSE, warning = FALSE,results = "hide"}
+packages_list<-c("tidyverse"
+                 ,"forecast"
+                 ,"mgcv"
+                 ,"ggplot2"
+                 ,"MASS"
+                 ,"RColorBrewer"
+                 ,"kableExtra"
+                 ,"gtools"
+                 # ,"ggfortify"
+                 ,"lubridate"
+                 ,"brms"
+                 ,"bsplus"
+                 ,"here"
+                 # ,"rnoaa"
+                 # ,"ncdf4"
+                 # ,"ncdf4.helpers"
+                 # ,"raster"
+                 # ,"reshape2"
+                 # ,"ggfortify"
+                 )
+install_or_load_pack(pack = packages_list)
+```
+
+# Load Data
+Here we will load and format our data for analysis. First, we will load and format our fish data for analysis. What you load is what you will forecast (so you can forecast run size or escapement)
+```{r load_data, message = FALSE, warning = FALSE,results = "show"}
+#====================================
+#get columbia spring chinook data as example
+#====================================
+# dat<-read_csv("http://www.cbr.washington.edu/dart/cs/php/rpt/adult_annual.php?sc=1&outputFormat=csv&proj=BON&startdate=1%2F1&enddate=6%2F15")%>%
+#   arrange(Year)%>%
+#   dplyr::select(Year, Chinook, `Jack Chinook`)%>%
+#   dplyr::rename(runsize_obs=Chinook)%>%
+#   mutate(`runsize_obs`=ifelse(as.numeric(Year)<=as.numeric(format(Sys.Date(),"%Y")),`runsize_obs`,NA))%>%
+#   mutate(`Jack Chinook` = ifelse(`Jack Chinook`==0,NA,`Jack Chinook`))%>%
+#   filter(!is.na(Year),
+#          between(Year,1990,2023))
+
+
+# dat<-readxl::read_xlsx(here("Data","CKL_2019.xlsx")) %>% 
+ dat<-read_csv(here("Data","Winter_steelhead_Columbia.csv")) 
+# dat
+
+thisYr<-as.numeric(format(Sys.Date(),"%Y"))+1
+dat<-dat%>%filter(Year<thisYr)
+
+Yrlist<-data.frame(Year=c((min(dat$Year)-2):(max(dat$Year)+1)))
+dat<-left_join(Yrlist,dat)
+
+#look at our data  
+print(tail((dat)))
+```
+
+The section will (optionally) download from the web (or load from the data folder) NOAA Ocean Indicator data, NOAA Ocean Buoy SST data, and NOAA smoothed modeled SST data (ERSST_V5), flow data, PIT tag data, or any other covariate data not included with the fish data that could assist in forecasting.
+```{r get_covariate_data, message = FALSE, warning = FALSE,results = "hide"}
+#=========================================================
+#get PIT tag survival/age data
+#=========================================================
+PIT<-read_csv(here("Data","Columbia_Steelhead_SAR_DART_wild_2022.csv"))%>%
+    rename(OutmigrationYear=year) %>% 
+  mutate(Year=OutmigrationYear+2) #%>% 
+
+
+PIT<-data.frame(SAR1=gam(cbind(ocean1Count,juvCount-ocean1Count)~s(OutmigrationYear,k=(dim(PIT)[1]),m=1,bs="ps"),family=binomial,data=PIT) %>% #$fitted))%>%
+                               predict(newdata=data.frame(OutmigrationYear=1999:2021) ,type="response")) %>%  
+  mutate(lag1_log_SAR1 = log(SAR1),
+  Year=(1999:2021)+2)%>%
+  dplyr::select(Year=Year,lag1_log_SAR1)
+
+
+#=========================================================
+#get PDO data
+#=========================================================
+PDO<-read_table("https://psl.noaa.gov/pdo/data/pdo.timeseries.ersstv5.csv",skip=1,col_names=F,comment="#")%>%
+  dplyr::rename(Date=X1,PDO=X2)%>%
+  filter(!PDO < -99)%>%
+  mutate(Date=as.Date(Date),Month=month(Date),Year=year(Date))%>%
+  group_by(Year)%>%
+  add_tally()%>%
+  #filter(!Month>6)%>% #use only spring (Jan-June) NPGO
+  #filter(!n < 12)%>% #use only complete years
+  group_by(Year)%>%
+  dplyr::summarise(PDO=mean(PDO))
+#=========================================================
+#get NPGO data
+#=========================================================
+NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment="#")%>%
+  filter(!is.na(X2))%>%
+  dplyr::rename(Year=X1,Month=X2,NPGO=X3)%>%
+  mutate(Year=as.numeric(Year))%>%
+  group_by(Year)%>%
+  add_tally()%>%
+  #filter(!Month>6)%>% #use only spring (Jan-June) NPGO
+  #filter(!n < 12)%>% #use only complete years
+  group_by(Year)%>%
+  dplyr::summarise(NPGO=mean(NPGO))
+#=========================================================
+#get NOAA indicator data, wrangle into usable format, plot
+#=========================================================
+# indicators<-read_csv("https://media.fisheries.noaa.gov/2022-03/Stoplight-updated-03282022_0.csv",skip=1)%>%
+# # indicators<-read_csv("data/Stoplight csv.csv",skip=1)%>%
+#   filter(!is.na(`Ecosystem Indicators`))%>%
+#   pivot_longer(names_to = "Year",
+#                 cols=c(starts_with("1"),starts_with("2")),
+#                 values_to = "value")%>%
+#   pivot_wider(names_from=`Ecosystem Indicators`,values_from=value)%>%
+#   mutate(Year=as.numeric(Year))
+
+# plotdat<-indicators%>%pivot_longer(names_to = "indicators", cols = colnames(indicators)[colnames(indicators)!="Year"])
+# ggplot(plotdat,aes(x=value,color=indicators))+
+#   geom_density()+
+#   facet_wrap(~indicators,scales="free")+
+#   theme(legend.position = "none")
+
+#==============================================================
+# get NOAA sst data directly from Buoys (takes a while to run)
+#==============================================================
+# buoylist<-c(46229, 46211, 46041, 46029, 46050, 46097, 46098)
+# years<-c(1980:2021)
+# buoy_stations()%>%filter(lat > 44 & lat < 52 & lon > -130 & lon < -120)
+# buoydat<-getbuoydata(buoylist = buoylist,years=years)
+# write.csv(dat,"SST.csv",row.names = F)
+
+#===================
+#Plot Buoy SST data
+#====================
+# buoydat<-buoydat%>%
+#   filter(!is.na(buoyid) & !is.na(meanSST))%>%
+#   group_by(buoyid,month)%>%
+#   mutate(gmeanSST=mean(meanSST),resid=meanSST-gmeanSST)
+#   
+# 
+# ggplot(buoydat,aes(x=month,y=resid,group=factor(buoyid),color=factor(buoyid)))+
+#   geom_hline(yintercept=0,linetype="dashed")+
+#   scale_color_brewer(palette = "Spectral")+
+#   geom_line()+
+# facet_wrap(~factor(year))
+
+
+#===========================================================================================================
+#Get ERSST data: get_ersst_v5_data takes A LONG TIME (1 hr) vs. get_ersst_v5_data_V2 which is much quicker!
+#===========================================================================================================
+#dat<-get_ersst_v5_data(years=years,data.dir=getwd(),latrange=c(44,52),lonrange=c(-130,-120))
+# sstdat<-get_ersst_v5_data_V2(years=c(1980:2021),
+#                              data.dir="C:/Users/buehrtwb/OneDrive - Washington State Executive Branch Agencies/Documents" ,
+#                              ncfilename="SSTv5.nc",
+#                              latrange=c(44,50),
+#                              lonrange=c(-125,-120)
+#                              )
+
+# sstdat<-sstdat%>%
+#   mutate(sstdiff=c(NA,diff(resid)))
+# 
+# #================
+# #Plot ERSST data
+# #================
+# ggplot(sstdat,aes(x=factor(month),y=meanSST,group=year))+
+#   geom_hline(yintercept=0,linetype="dashed")+
+#   scale_color_brewer(palette = "Spectral")+
+#   geom_line()+
+#   facet_wrap(~factor(year))
+# 
+# ggplot(sstdat,aes(x=factor(month),y=resid,group=year))+
+#   geom_hline(yintercept=0,linetype="dashed")+
+#   scale_color_brewer(palette = "Spectral")+
+#   geom_line()+
+#   facet_wrap(~factor(year))
+# 
+# ggplot(sstdat,aes(x=factor(month),y=sstdiff,group=year))+
+#   geom_hline(yintercept=0,linetype="dashed")+
+#   scale_color_brewer(palette = "Spectral")+
+#   geom_line()+
+#   facet_wrap(~factor(year))
+# 
+# ssta<-sstdat%>%
+#   dplyr::select(year,month,resid)%>%
+#   mutate(month = paste0("m_",month))%>%
+#   rename(Year = year)%>%
+#   pivot_wider(names_from = month,values_from = resid)
+# 
+# pcdat<-ssta%>%
+#   ungroup()%>%
+#   filter(Year<2021)%>%
+#   column_to_rownames(var="Year")
+# mod<-prcomp(pcdat
+#             )
+# autoplot(mod,data=ssta%>%filter(Year<2021)%>%column_to_rownames(var="Year"),
+#          x=1,
+#          y=3,
+#          label = TRUE, 
+#          label.size = 3,
+#          shape=F)
+```
+
+
+If we loaded/downloaded covariate data (other than fish abundance) for use in forecasting, in this section we will merge it with our fish data to produce a final dataframe. Note the format below; the rest of the functions and sections rely on your data being formatted this way,
+```{r merge_covariate_data, message = FALSE, warning = FALSE,results = "show"}
+dat2<-dat%>%
+  left_join(PIT)%>%
+  # left_join(PDO)%>%
+  left_join(NPGO) %>% 
+            
+  mutate(
+pink_ind=rep(c(0:1),length.out=nrow(.)),
+               # lag1_PDO = lag(c(scale(PDO))),
+    # lag2_PDO = lag(c(scale(PDO)),2),
+                lag1_NPGO = lag(c(scale(NPGO))),
+    lag2_NPGO = lag(c(scale(NPGO)),2),
+lag1_log_SAR1=scale(lag1_log_SAR1)
+
+    )
+
+#select variables to include in analysis and subset data
+vars2<-c("pink_ind"
+        ,"lag1_NPGO"
+        ,"lag2_NPGO"
+        ,"lag1_log_SAR1"
+        # ,"lag1_PDO"
+        # ,"lag2_PDO"
+        ) 
+dat3<-data.frame(dat2)%>%
+  dplyr::select(Year,runsize_obs,all_of(vars2))%>%
+  filter(
+    across(
+      .cols = all_of(vars2),
+      .fns = ~ !is.na(.x)
+    )
+  )#%>%filter(Year>1999)
+#look at our data  
+print(tail(dat3))
+```
+
+# Set Parameters
+Here we specify parameters for our forecast training and evaluation: how many years of training data to include in the training set (validation is the rest), how many years forward to forecast (typically 1), and make some selections regarding which metric to use to evaluate forecast model performance.
+```{r set_parameters, message = FALSE, warning = FALSE,results = "hide"}
+#set model fitting and evaluation params
+TY <- 15 #training years (years of training data)
+FY <- 1 #forecast years (years foreward to forecast)
+k = 1 #this is the model-averaging weighting exponent--default is 1, larger numbers will tend to more heavily weight "best" models over lower ranked models
+stack_metric = "RMSE" #this is the performance measure that will be optimized to find the best stack weights
+num_models<-10
+```
+
+# Fit Forecast Models
+<!-- Here we fit ARIMA and GAM forecasts  -->
+```{r fit_forecasts, message = FALSE, warning = FALSE,results = "hide"}
+dat<-dat3
+best_covariates<-all_subsets(series=dat3,covariates=vars2,min=0,max=4)
+
+# print(
+# best_covariates[[2]] %>%
+#   slice(1:10)%>%
+#   kbl(caption = "Table 1. Covariate Model Selection Results.",digits =3)%>%
+#   kable_classic(full_width = F, html_font = "Cambria")
+# )
+# best_covariates[[1]][best_covariates[[2]]$model_num[1:10]]
+
+
+results<-inseason_forecast_v2(series=dat,
+                  leave_yrs=TY,#last 10 years are used for model evaluation. Five previous for fitting stack weights in the first evaluation year
+                  covariates=best_covariates[[1]][best_covariates[[2]]$model_num[1:num_models]],
+                  # first_forecast_period = first_forecast_period,
+                  # plot_results = plot_results,
+                  write_model_summaries = T,
+                  # forecast_period_start_m =  forecast_period_start_m, #inclusive 
+                  # forecast_period_start_d =  forecast_period_start_d, #inclusive
+                 
+                  # p1_covariates_only=NULL,
+                  seasonal=FALSE,
+                  stack_metric = stack_metric
+                  )
+
+model_list<-lapply(best_covariates[[1]][best_covariates[[2]]$model_num[1:num_models]],function(x) paste(x,collapse = " + "))%>%
+  unlist()%>%
+  as_tibble()%>%
+  add_rownames()%>%
+  dplyr::rename(model=rowname,model_name=value)
+```
+
+
+``````{r , message = FALSE, warning = FALSE,results = "show"}
+results$forecasts%>%
+  filter(Year==max(Year))%>%
+  left_join(model_list %>% rename(Model=model))%>%
+  left_join(results$final_model_weights%>% rename(Model=model))%>% 
+    dplyr::select(-c(MAPE,RMSE,MSA)) %>% 
+  left_join(results$forecast_skill) %>% 
+  mutate(model_name = ifelse(is.na(Stacking_weight),Model,model_name))%>%
+  dplyr::select(Year,model_name,predicted_runsize_obs,MAPE,RMSE,MSA,`Lo 50`,`Hi 50`,`Lo 95`,`Hi 95`,Stacking_weight)%>%
+  arrange(MAPE) %>% 
+  kbl(caption = "Table: Forecasts and permance metrics",digits =2)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+
+
+
+
+  results_best<-results$forecasts%>%
+  ungroup()%>%
+  filter(Model ==(results$final_model_weights %>% arrange(MAPE) %>% pull(model))[1])
+# }
+
+
+
+# results_best%>%
+#   dplyr::select(!c("train_test"))%>%
+#   kbl(caption = paste0("Table 2. Forecasts of ","Bonneville dam counts of spring Chinook"),digits =2)%>%
+#   kable_classic(full_width = F, html_font = "Cambria")
+
+# print(paste0("Mean Absolute Percent Error (MAPE) = ",mean(abs((results_best$error/results$runsize_obs)*100),na.rm = T)))
+# print(paste0("Median Symmetric Accuracy; MSA) = ",100*(exp(median(abs(log(results_best$predicted_runsize_obs/results$runsize_obs)),na.rm = T))-1)))
+
+p<-ggplot(results_best,aes(x=Year,y=predicted_runsize_obs))+
+  geom_ribbon(aes(ymin=`Lo 95`,ymax=`Hi 95`),color=NA,alpha=0.5,fill = "cadetblue")+
+  geom_ribbon(aes(ymin=`Lo 50`,ymax=`Hi 50`),color=NA,alpha=0.5,fill = "cadetblue")+
+  geom_line()+
+  geom_point(aes(x=Year,y=runsize_obs))+
+  ylim(0,NA)#+
+  # scale_x_continuous(breaks=unique(results$Year))
+
+print(p)
+
+```

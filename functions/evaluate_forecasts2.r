@@ -4,7 +4,7 @@ evaluate_forecasts2<-function(forecasts,observations){
     # left_join(observations,by=c("Year","runsize_obs"))%>%
     dplyr::select(Year,Model,runsize_obs,predicted_runsize_obs)%>%
     mutate(error=predicted_runsize_obs-runsize_obs)%>%
-    filter(!is.na(error))%>%
+    # filter(!is.na(error))%>%
     group_by(Model)%>%
     summarise(MAPE = mean(abs(error/runsize_obs))*100,
               RMSE = sqrt(mean(error^2)),

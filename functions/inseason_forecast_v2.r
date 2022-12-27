@@ -27,10 +27,10 @@ inseason_forecast_v2<-function(series,
     )
   
   for(c in 1:length(covariates)){
-    for(i in 1:leave_yrs){
-      last_train_yr = max(series$Year) - (leave_yrs-i+1)
+    for(i in 1:(leave_yrs+1)){
+      last_train_yr = max(series$Year) - (leave_yrs-i+2)
       tdat<-series%>%
-        filter(Year <= (last_train_yr + 1))%>%
+        filter(Year <= (last_train_yr+1))%>%
         mutate(train_test = ifelse(Year > last_train_yr, 1, 0),
         )
       
@@ -105,12 +105,12 @@ inseason_forecast_v2<-function(series,
           mutate(Year = last_train_yr+1)
       }
       
-      if(write_model_summaries ==T){
-        sink("summary.txt",append=T)
-        print(summary(m1))
-        sink()
-      }
-      
+      # if(write_model_summaries ==T){
+      #   sink("summary.txt",append=T)
+      #   print(summary(m1))
+      #   sink()
+      # }
+      # 
       tdat<-tdat%>%
         bind_cols(pred=pred)%>%
         left_join(CI, by = c("Year"))%>%
@@ -141,7 +141,7 @@ inseason_forecast_v2<-function(series,
   forecasts<-tdat2
   
   #do model averaging and stacking and calculate performance metrics
-  forcast_eval<-evaluate_forecasts_with_ensembles2(forecasts,dat,y1=11)
+  forcast_eval<-evaluate_forecasts_with_ensembles2(forecasts,dat)
   
   return(forcast_eval)
 }

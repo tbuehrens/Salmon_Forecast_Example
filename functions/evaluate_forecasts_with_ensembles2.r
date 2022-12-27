@@ -1,11 +1,11 @@
-evaluate_forecasts_with_ensembles2<-function(forecasts,dat,y1=11){
+evaluate_forecasts_with_ensembles2<-function(forecasts,dat,n_start=5){
   
   yrrange<-forecasts%>%
     summarise(minyr=min(Year),maxyr=max(Year))%>%
     unlist()
   
   ensembles<-NULL
-  for(i in (thisYr-y1):2022){
+  for(i in (yrrange[1]+(n_start-1)):(yrrange[2]-1)){ #start wtih the n_start + 1 year of forecasts to allow for n+start years to fit stack weights with in first forecast year
     years<-c(yrrange[1]:i)
     tdat<-forecasts%>%
       filter(Year %in% years)%>%
@@ -26,6 +26,9 @@ evaluate_forecasts_with_ensembles2<-function(forecasts,dat,y1=11){
     
     modelcnt<-length(unique(forecasts$model))
     stackyears<-years[years!=max(years)]
+    
+    
+    
     stackdat<-forecasts%>%
       filter(Year %in% years)%>%
       pivot_wider(names_from = model, values_from = predicted_runsize_obs,id_cols = Year)%>%
@@ -74,12 +77,12 @@ evaluate_forecasts_with_ensembles2<-function(forecasts,dat,y1=11){
     ensembles<-bind_rows(ensembles,tdat2)
   }
   forecast_skill<-evaluate_forecasts2(forecasts = bind_rows(forecasts %>% rename(Model=model),ensembles %>% left_join(dat))%>%
-                                       filter(Year>(thisYr-y1)),
+                                       filter(between(Year,(yrrange[1]+(n_start-1)),(yrrange[2]-1))),
                                      observations = dat
   )
   
   forecasts2<- bind_rows(forecasts %>% rename(Model=model),ensembles %>% left_join(dat))%>%
-    filter(Year>(thisYr-y1))
+    filter(Year>(yrrange[1]+(n_start-1)))
   
   results<-list(
     final_model_weights = tdat,
