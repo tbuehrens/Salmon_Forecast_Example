@@ -89,7 +89,7 @@ dat <- dat%>%
 
 SAR<-dat%>%
   right_join(Yrlist)%>%
-  filter(Year<2021)
+  filter(Year<2022)
 
 SAR<-SAR%>%bind_cols(SAR1=data.frame(SAR1=gam(cbind(round(OA1_Recruits),smolts-round(OA1_Recruits))~s(Year,k=(dim(SAR)[1]),m=1,bs="ps"),family=quasibinomial,data=SAR)$fitted))%>%
   bind_cols(SAR2=data.frame(SAR2=c(NA,gam(cbind(round(OA2_Recruits),smolts-round(OA2_Recruits))~s(Year,k=(dim(SAR)[1]-1),m=1,bs="ps"),family=quasibinomial,data=SAR)$fitted)))%>%
@@ -119,8 +119,9 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
   mutate(Year=as.numeric(Year))%>%
   group_by(Year)%>%
   add_tally()%>%
+  filter(Month == 2)%>%
   #filter(!Month>6)%>% #use only spring (Jan-June) NPGO
-  filter(!n < 12)%>% #use only complete Years
+  #filter(!n < 12)%>% #use only complete Years
   group_by(Year)%>%
   dplyr::summarise(NPGO=mean(NPGO))%>%
   mutate(Year=Year+1, lag1_NPGO = NPGO,lag2_NPGO = lag(NPGO))%>%
@@ -268,6 +269,9 @@ dat <- dat%>%
 
 
 #select variables to include in analysis and subset data
+
+#vars<-c("lag1_log_SAR2","lag2_NPGO")
+
 vars<-c("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO") #what regression variables will we use?
 dat<-data.frame(dat)%>%
   dplyr::select(Year,runsize_obs,all_of(vars))%>%
@@ -313,6 +317,7 @@ ARIMA100<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             type="ARIMA",
             order=c(1,0,0)
 )
+
 ARIMA100_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
             xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
