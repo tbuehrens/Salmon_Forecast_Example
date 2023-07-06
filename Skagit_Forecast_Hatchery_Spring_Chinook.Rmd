@@ -466,6 +466,10 @@ forecast_skill%>%
 Calculate leave-forward-out performance year by year in order to develop weighted ensembles (with recalculated weights each year). Then evaluate performance of these one-year-ahead ensembles and compare with original models. Note that one fewer years of leave-forward-out forecasts is evaluated since an ensemble using previous years' forecast skill can only be created for the second through last years of leave-forward-out forecasts.
 ````{r develop and evaluate ensembles, message = FALSE, warning = FALSE,results = "show"}
 ensemble_results<-evaluate_forecasts_with_ensembles(forecasts = forecasts, observations = dat)
+
+## remove the stack weighted ensemble
+ensemble_results$ensembles <-  ensemble_results$ensembles%>%
+  filter(!Model == "Stack_weighted")
 #=================================
 #Table of final year model weights
 #=================================
@@ -554,7 +558,6 @@ mu <- best_model%>%
   dplyr::select(Estimate)
 
 ## compute last 5 year average age comp
-
 age <- apply(dat_age[(dim(dat_age)[1]-5):dim(dat_age)[1],-1],2,FUN = mean)
 forecast <- as.matrix(age) %*% as.matrix(mu[,2])
 
@@ -580,11 +583,11 @@ forecast_sub_yearling%>%
 
 ##
 
-forecast_yearling <- forecast[8:9,]
+forecast_yearling <- forecast[9:10,]
 
-forecast_yearling <- cbind(age = c(3,4),trs = forecast_yearling)
+forecast_yearling <- cbind(age = c(4,5),trs = forecast_yearling)
 
-by.temp <- max(Yrlist,na.rm=T) - c(3,4)
+by.temp <- max(Yrlist,na.rm=T) - c(4,5)
 
 pct_marked_yearling <- dat_pct_marked%>%
   filter(stock == "springHatchery" & fwAge == 1 & year %in% by.temp)%>%

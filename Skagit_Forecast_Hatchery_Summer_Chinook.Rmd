@@ -466,6 +466,11 @@ forecast_skill%>%
 Calculate leave-forward-out performance year by year in order to develop weighted ensembles (with recalculated weights each year). Then evaluate performance of these one-year-ahead ensembles and compare with original models. Note that one fewer years of leave-forward-out forecasts is evaluated since an ensemble using previous years' forecast skill can only be created for the second through last years of leave-forward-out forecasts.
 ````{r develop and evaluate ensembles, message = FALSE, warning = FALSE,results = "show"}
 ensemble_results<-evaluate_forecasts_with_ensembles(forecasts = forecasts, observations = dat)
+
+## remove the stack weighted ensemble
+ensemble_results$ensembles <-  ensemble_results$ensembles%>%
+  filter(!Model == "Stack_weighted")
+
 #=================================
 #Table of final year model weights
 #=================================

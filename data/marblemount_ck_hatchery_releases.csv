@@ -19,6 +19,7 @@ year,releases,fwAge,percentMarked,stock
 2010,140019,1,0.481798899,springHatchery
 2018,405000,1,0.76488642,springHatchery
 2019,414874,1,0.774601445,springHatchery
+2020,NA,1,NA,springHatchery
 1993,716257,0,0.347576359,springHatchery
 1994,261581,0,0.99359663,springHatchery
 1995,252448,0,0.997698536,springHatchery
@@ -47,6 +48,7 @@ year,releases,fwAge,percentMarked,stock
 2018,674000,0,0.691596439,springHatchery
 2019,833979,0,0.753629288,springHatchery
 2020,747034,0,0.722240219,springHatchery
+2021,1107600,0,0.809454677,springHatchery
 1994,191515,0,1,summerIndicator
 1995,137661,0,1,summerIndicator
 1996,23500,0,0.999021277,summerIndicator
@@ -74,3 +76,4 @@ year,releases,fwAge,percentMarked,stock
 2018,201400,0,0.992497517,summerIndicator
 2019,204000,0,0.997098039,summerIndicator
 2020,130415,0,0.997998696,summerIndicator
+2021,217000,0,0.992599078,summerIndicator

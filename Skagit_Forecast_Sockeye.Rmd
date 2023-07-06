@@ -119,13 +119,15 @@ NPGO<-read_table("http://www.o3d.org/npgo/npgo.php",skip=29,col_names=F,comment=
   mutate(Year=as.numeric(Year))%>%
   group_by(Year)%>%
   add_tally()%>%
-  filter(Month == 2)%>%
+  filter(Month == 12)%>%
   #filter(!Month>6)%>% #use only spring (Jan-June) NPGO
   #filter(!n < 12)%>% #use only complete Years
   group_by(Year)%>%
   dplyr::summarise(NPGO=mean(NPGO))%>%
-  mutate(Year=Year+1, lag1_NPGO = NPGO,lag2_NPGO = lag(NPGO))%>%
-  dplyr::select(Year=Year,lag1_NPGO,lag2_NPGO)
+  mutate(Year=Year+2, lag2_NPGO = NPGO,lag3_NPGO = lag(NPGO,1))%>%
+  dplyr::select(Year=Year,lag2_NPGO,lag3_NPGO)
+
+write.csv(NPGO, "NPGO.csv")
 
 #=========================================================
 #get NOAA indicator data, wrangle into usable format, plot
@@ -229,7 +231,7 @@ dat <- dat%>%
   left_join(SAR)%>%
   left_join(Smolts)%>%
   left_join(NPGO)%>%
-  dplyr::select(Year=Year,runsize_obs,lag1_log_SAR2,lag2_NPGO,lag2_log_smolts)
+  dplyr::select(Year=Year,runsize_obs,lag1_log_SAR2,lag3_NPGO,lag2_log_smolts)
 
 # dat<-dat%>%
 #   #left_join(PIT)%>%
@@ -272,7 +274,7 @@ dat <- dat%>%
 
 #vars<-c("lag1_log_SAR2","lag2_NPGO")
 
-vars<-c("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO") #what regression variables will we use?
+vars<-c("lag1_log_SAR2","lag2_log_smolts","lag3_NPGO") #what regression variables will we use?
 dat<-data.frame(dat)%>%
   dplyr::select(Year,runsize_obs,all_of(vars))%>%
   filter(
@@ -320,7 +322,7 @@ ARIMA100<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA100_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag3_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -329,7 +331,7 @@ ARIMA100_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA100_withcov_NPGO<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag3_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -356,7 +358,7 @@ ARIMA100_withcov_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA111_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag3_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -365,7 +367,7 @@ ARIMA111_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA111_withcov_NPGO<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag3_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -394,7 +396,7 @@ ARIMA111_withcov_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA010_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag3_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -403,7 +405,7 @@ ARIMA010_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA010_withcov_NPGO<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag3_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -446,7 +448,7 @@ ARIMA010<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 # )
 ARIMA101_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag3_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -455,7 +457,7 @@ ARIMA101_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA101_withcov_NPGO<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag3_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -492,7 +494,7 @@ ARIMA101<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 )
 ARIMA001_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag1_log_SAR2","lag2_log_smolts","lag3_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -501,7 +503,7 @@ ARIMA001_withcov_NPGO_smolts_SAR1<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
 
 ARIMA001_withcov_NPGO<-tsCV2(y=log(dat$runsize_obs[-dim(dat)[1]]),
             Year=dat$Year,
-            xreg=dat%>%dplyr::select("lag2_NPGO")%>%as.matrix(),
+            xreg=dat%>%dplyr::select("lag3_NPGO")%>%as.matrix(),
             h=FY,
             min=TY,
             type="ARIMA",
@@ -656,11 +658,15 @@ forecast_skill%>%
 Calculate leave-forward-out performance Year by Year in order to develop weighted ensembles (with recalculated weights each Year). Then evaluate performance of these one-Year-ahead ensembles and compare with original models. Note that one fewer Years of leave-forward-out forecasts is evaluated since an ensemble using previous Years' forecast skill can only be created for the second through last Years of leave-forward-out forecasts.
 ````{r develop and evaluate ensembles, message = FALSE, warning = FALSE,results = "show"}
 ensemble_results<-evaluate_forecasts_with_ensembles(forecasts = forecasts, observations = dat)
+
+## remove the stack weighted ensemble
+ensemble_results$ensembles <-  ensemble_results$ensembles%>%
+  filter(!Model == "Stack_weighted")
 #=================================
 #Table of final Year model weights
 #=================================
 ensemble_results$final_model_weights%>%
-  dplyr::select(Model, RMSE_weight, MAPE_weight, MSA_weight, Stacking_weight)%>%
+  dplyr::select(Model, RMSE_weight, MAPE_weight, MSA_weight)%>%
   kbl(caption = "Table 3. Final Year Model Weights based on full dataset of one-Year-ahead performance.",digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 #=======================================
@@ -677,6 +683,8 @@ ensemble_results$ensembles%>%
 ensemble_results$forecast_skill%>%
   kbl(caption = "Table 5. One-Year ahead performance of model & model ensemble forecasts. Ensemble weights recalculated annually using weights based on one-head performance up to to and including the Year prior to the forecast Year. Year one of one-Year ahead fits not included since an ensemble cannot be computed for this Year.",digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
+
+
 #==============
 #plot ensemble forecasts
 #==============
@@ -715,7 +723,7 @@ ggplot(data=best_model,aes(x=Year,y=Estimate,color=Model))+
   theme_bw()
 
 best_mu<-log(best_model%>%filter(Year==max(Year))%>%dplyr::select(Estimate))%>%unlist()
-best_sd<-best_model%>%filter(Year==max(Year))%>%dplyr::select(sd)%>%unlist()
+best_sd<-best_model%>%filter(Year==max(best_model$Year))%>%dplyr::select(sd)%>%unlist()
 best_draws=data.frame(Estimate=rlnorm(25000,mean=best_mu,sd=best_sd[1]))
 
 sockeye_forecast <- write.csv(best_draws,"sockeyeforecast.csv")
